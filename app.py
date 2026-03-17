@@ -189,6 +189,52 @@ SPEED_RANK = {
 }
 
 # ============================================================
+# DBOX PRODUCT PROFILES
+# ============================================================
+DBOX_PROFILES = {
+    "Ceres 338TB (1U)":   {"raw_tb": 338,   "usable_tb": 245.66,  "form_factor": "1U", "model": "DF-3015"},
+    "Ceres 1350TB (1U)":  {"raw_tb": 1350,  "usable_tb": 982.62,  "form_factor": "1U", "model": "DF-3060"},
+    "Ceres 2700TB (1U)":  {"raw_tb": 2700,  "usable_tb": 1965.25, "form_factor": "1U", "model": "DF-3120"},
+    "MLK 1350TB (2U)":    {"raw_tb": 1350,  "usable_tb": 1105.45, "form_factor": "2U", "model": "MLK-1350"},
+    "MLK 2700TB (2U)":    {"raw_tb": 2700,  "usable_tb": 2210.90, "form_factor": "2U", "model": "MLK-2700"},
+    "MLK 5400TB (2U)":    {"raw_tb": 5400,  "usable_tb": 4421.80, "form_factor": "2U", "model": "MLK-5400"},
+}
+
+# ============================================================
+# CNODE PERFORMANCE PROFILES (per CNode, 1MB Random)
+# ============================================================
+CNODE_PERF = {
+    "GEN6 Turin": {
+        "100% Read":            37.0,
+        "80/20 Read/Write":     25.1,
+        "60/40 Read/Write":     17.1,
+        "40/60 Read/Write":     13.3,
+        "20/80 Read/Write":      9.7,
+        "100% Write":            7.6,
+        "100% Write Burst":     23.0,
+    },
+    "GEN5 Genoa": {
+        "100% Read":            29.0,
+        "80/20 Read/Write":     17.6,
+        "60/40 Read/Write":     11.0,
+        "40/60 Read/Write":      8.1,
+        "20/80 Read/Write":      6.7,
+        "100% Write":            3.5,
+        "100% Write Burst":     10.0,
+    },
+}
+
+# Data reduction estimates by use case (min, typical, max multiplier)
+DR_ESTIMATES = {
+    "AI Training / Inference":  (1.0, 1.2, 1.5),
+    "HPC":                      (1.0, 1.3, 2.0),
+    "Video":                    (1.0, 1.1, 1.3),
+    "Backup / Archive":         (1.5, 2.5, 4.0),
+    "Enterprise (Mixed)":       (1.5, 2.0, 3.0),
+    "Genomics":                 (1.2, 1.8, 2.5),
+}
+
+# ============================================================
 # HELPER FUNCTIONS
 # ============================================================
 def get_sw_suffix(model_key):
@@ -506,13 +552,14 @@ if se_name and customer:
 # ============================================================
 # TABS
 # ============================================================
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "📋 Project Details",
     "📄 Confluence Install Plan",
     "✅ Validation & Pre-Flight",
     "📋 Installation Procedure",
     "🔌 Internal Switch — Southbound",
     "🖥️ Data Switch — Northbound",
+    "📏 Capacity & Performance Sizer",
     "🚀 Coming Soon"
 ])
 #=============================================================
@@ -3587,9 +3634,168 @@ Document output and attach to the SFDC install case.
 
 
 # ============================================================
-# TAB 7 — COMING SOON
+
+# ============================================================
+# TAB 7 — CAPACITY & PERFORMANCE SIZER
 # ============================================================
 with tab7:
+    st.subheader("📏 Capacity & Performance Sizer")
+    st.caption("Indicative sizing only — based on published VAST performance data. Not a formal quote.")
+
+    st.markdown("---")
+
+    sizer_col1, sizer_col2 = st.columns([1, 1])
+
+    with sizer_col1:
+        st.markdown("### 🖥️ Hardware Selection")
+
+        sizer_cnode_gen = st.selectbox(
+            "CNode Generation",
+            options=list(CNODE_PERF.keys()),
+            key="sizer_cnode_gen"
+        )
+        sizer_num_cnodes = st.slider(
+            "Number of CNodes",
+            min_value=1, max_value=28, value=4,
+            key="sizer_num_cnodes"
+        )
+        sizer_dbox_model = st.selectbox(
+            "DBox Model",
+            options=list(DBOX_PROFILES.keys()),
+            key="sizer_dbox_model"
+        )
+        sizer_num_dboxes = st.slider(
+            "Number of DBoxes",
+            min_value=1, max_value=14, value=1,
+            key="sizer_num_dboxes"
+        )
+
+        st.markdown("### 🎯 Workload")
+        sizer_use_case = st.selectbox(
+            "Use Case",
+            options=list(DR_ESTIMATES.keys()),
+            key="sizer_use_case"
+        )
+
+        _dr_min, _dr_typ, _dr_max = DR_ESTIMATES[st.session_state.get("sizer_use_case", list(DR_ESTIMATES.keys())[0])]
+        st.caption(f"Typical DRR range for this use case: {_dr_min}x — {_dr_max}x (typical: {_dr_typ}x)")
+        sizer_drr_override = st.number_input(
+            "SE DRR Override (leave at 0 to use use-case typical)",
+            min_value=0.0, max_value=10.0, value=0.0, step=0.1,
+            key="sizer_drr_override"
+        )
+
+        sizer_ratio = st.selectbox(
+            "Workload Read/Write Ratio",
+            options=list(CNODE_PERF["GEN6 Turin"].keys()),
+            key="sizer_ratio"
+        )
+
+        st.markdown("### 📈 Growth")
+        sizer_growth_years = st.slider(
+            "Growth projection (years)", min_value=1, max_value=5, value=3,
+            key="sizer_growth_years"
+        )
+        sizer_growth_pct = st.slider(
+            "Annual data growth (%)", min_value=0, max_value=100, value=20,
+            key="sizer_growth_pct"
+        )
+
+    with sizer_col2:
+        st.markdown("### 📊 Results")
+
+        dbox  = DBOX_PROFILES[sizer_dbox_model]
+        cperf = CNODE_PERF[sizer_cnode_gen]
+
+        # Capacity
+        raw_tb      = dbox["raw_tb"]    * sizer_num_dboxes
+        usable_tb   = dbox["usable_tb"] * sizer_num_dboxes
+        dr_min, dr_typ, dr_max = DR_ESTIMATES[sizer_use_case]
+        # Use SE override if set, otherwise use typical
+        sizer_drr_override = st.session_state.get("sizer_drr_override", 0.0)
+        dr_effective = sizer_drr_override if sizer_drr_override > 0 else dr_typ
+        eff_min_tb  = usable_tb * dr_min
+        eff_typ_tb  = usable_tb * dr_effective
+        eff_max_tb  = usable_tb * dr_max
+
+        # Performance
+        perf_per_cnode = cperf.get(sizer_ratio, 0)
+        total_perf_gbs = perf_per_cnode * sizer_num_cnodes
+
+        # Growth
+        growth_factor = (1 + sizer_growth_pct / 100) ** sizer_growth_years
+        future_tb = usable_tb * growth_factor
+
+        # ── Capacity block ───────────────────────────────────
+        st.markdown("#### 💾 Capacity")
+        cap_data = {
+            "Metric": [
+                "Raw Capacity",
+                "Usable Capacity",
+                f"Effective (min @ {dr_min}x DR)",
+                f"Effective ({'SE override' if sizer_drr_override > 0 else 'typical'} @ {dr_effective}x DR)",
+                f"Effective (max @ {dr_max}x DR)",
+                f"Projected Usable in {sizer_growth_years}yr ({sizer_growth_pct}%/yr)",
+            ],
+            "Value": [
+                f"{raw_tb:,.1f} TB",
+                f"{usable_tb:,.1f} TB",
+                f"{eff_min_tb:,.1f} TB",
+                f"{eff_typ_tb:,.1f} TB",
+                f"{eff_max_tb:,.1f} TB",
+                f"{future_tb:,.1f} TB",
+            ]
+        }
+        st.table(cap_data)
+
+        # ── Performance block ────────────────────────────────
+        st.markdown("#### ⚡ Performance")
+        st.metric(
+            label=f"{sizer_cnode_gen} × {sizer_num_cnodes} CNodes — {sizer_ratio}",
+            value=f"{total_perf_gbs:.1f} GB/s"
+        )
+
+        perf_rows = []
+        for ratio, per_node in cperf.items():
+            total = per_node * sizer_num_cnodes
+            perf_rows.append({
+                "Workload Mix":     ratio,
+                "Per CNode (GB/s)": f"{per_node:.1f}",
+                f"× {sizer_num_cnodes} CNodes (GB/s)": f"{total:.1f}",
+            })
+        st.dataframe(perf_rows, use_container_width=True)
+
+        # ── Hardware summary ─────────────────────────────────
+        st.markdown("#### 📦 Configuration Summary")
+        st.info(
+            f"**{sizer_num_dboxes}× {sizer_dbox_model}** "
+            f"({dbox['form_factor']}, {dbox['usable_tb']:.2f} TB usable each)  \n"
+            f"**{sizer_num_cnodes}× {sizer_cnode_gen} CNode**  \n"
+            f"**Use case:** {sizer_use_case}  \n"
+            f"**Switch fabric:** VAST internal storage fabric (200GbE)"
+        )
+
+        # ── AI / GPU note ─────────────────────────────────────
+        if "AI" in sizer_use_case:
+            st.warning(
+                "⚠️ **AI workloads** — NFS over RDMA / GDS required for full throughput. "
+                "Confirm GPU servers support RoCEv2 and GDS before sizing."
+            )
+
+        # ── Erasure coding note ───────────────────────────────
+        st.caption(
+            "VAST uses a unique Wide Stripe Erasure Code which benefits customers with typically larger environments. "
+            "Usable figures shown are per-DBox actuals — overhead is cluster-size dependent (~2.7% at scale). "
+            "Data reduction estimates are indicative ranges based on use case — actual results vary. "
+            "SE DRR override allows you to apply a customer-specific reduction ratio to the typical effective capacity."
+        )
+
+    st.markdown("---")
+    st.caption("Performance data: VAST GEN5 Genoa and GEN6 Turin, 1MB Random I/O. Source: VAST internal benchmarks.")
+
+# TAB 8 — COMING SOON
+# ============================================================
+with tab8:
     st.subheader("🚀 Coming Soon")
     st.markdown("---")
 
@@ -3600,11 +3806,7 @@ with tab7:
         ("💾 Project History",
          "SQLite database storing all previous installs on this machine. "
          "Load a previous project, track changes over time, export to Google Drive."),
-        ("📏 Capacity & Performance Sizer",
-         "Indicative sizing based on DBox model, CNode count, and use case. "
-         "Covers raw capacity, usable capacity, read/write throughput, "
-         "data reduction estimates, and GPU checkpoint sizing for AI workloads."),
-        ("🔌 Hardware Selector",
+("🔌 Hardware Selector",
          "Product profiles for CNode (GEN5/GEN6, single/dual NIC) and DBox models. "
          "Automatically adjusts switch config based on NIC type — "
          "dual NIC removes uplink from storage fabric config."),
