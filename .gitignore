@@ -1,0 +1,25 @@
+# Database and backups
+data/
+*.db
+*.bak
+
+# Generated configs
+outputs/
+
+# Environment
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Docker
+*.log
+
+# Windows download metadata
+*Zone.Identifier
+*.Zone.Identifier
+
+# Temp/staging folder
+temp/
