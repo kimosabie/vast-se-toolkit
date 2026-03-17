@@ -23,8 +23,8 @@ st.set_page_config(
 # HARDWARE PROFILES
 # ============================================================
 HARDWARE_PROFILES = {
-    "Mellanox SN3700": {
-        "vendor":            "mellanox",
+    "NVIDIA SN3700": {
+        "vendor":            "nvidia",
         "os":                "cumulus",
         "total_ports":       32,
         "native_speed":      "200GbE",
@@ -42,8 +42,8 @@ HARDWARE_PROFILES = {
         "form_factor":       "1U",
         "notes":             "Mid-to-large cluster leaf switch"
     },
-    "Mellanox SN4600": {
-        "vendor":            "mellanox",
+    "NVIDIA SN4600": {
+        "vendor":            "nvidia",
         "os":                "cumulus",
         "total_ports":       64,
         "native_speed":      "200GbE",
@@ -61,8 +61,8 @@ HARDWARE_PROFILES = {
         "form_factor":       "2U",
         "notes":             "Large cluster leaf or spine"
     },
-    "Mellanox SN4700": {
-        "vendor":            "mellanox",
+    "NVIDIA SN4700": {
+        "vendor":            "nvidia",
         "os":                "cumulus",
         "total_ports":       32,
         "native_speed":      "400GbE",
@@ -81,8 +81,8 @@ HARDWARE_PROFILES = {
         "form_factor":       "1U",
         "notes":             "AI/GPU workloads, spine capable"
     },
-    "Mellanox SN5400": {
-        "vendor":            "mellanox",
+    "NVIDIA SN5400": {
+        "vendor":            "nvidia",
         "os":                "cumulus",
         "total_ports":       64,
         "native_speed":      "400GbE",
@@ -192,8 +192,8 @@ SPEED_RANK = {
 # HELPER FUNCTIONS
 # ============================================================
 def get_sw_suffix(model_key):
-    if "Mellanox" in model_key:
-        return "MLNX"
+    if "NVIDIA" in model_key or "Mellanox" in model_key:
+        return "NVIDIA"
     elif "Arista" in model_key:
         return "ARISTA"
     return "SW"
@@ -1187,8 +1187,8 @@ with tab5:
             ]
 
             spine_vendor_suffix = get_sw_suffix(spine_model)
-            spine_sw_a_name     = f"{pfx}-{spine_vendor_suffix}-SPINE-A"
-            spine_sw_b_name     = f"{pfx}-{spine_vendor_suffix}-SPINE-B"
+            spine_sw_a_name     = f"{pfx}-{spine_vendor_suffix}-SPINE-SW1"
+            spine_sw_b_name     = f"{pfx}-{spine_vendor_suffix}-SPINE-SW2"
 
             spine_table_rows = []
 
