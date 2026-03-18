@@ -3,6 +3,7 @@ from jinja2 import Environment, FileSystemLoader
 from datetime import date
 import sys
 import os
+import requests
 sys.path.insert(0, os.path.dirname(__file__))
 try:
     import db as _db
@@ -383,13 +384,13 @@ def render_cable_summary(profile, isl_short):
 # Keys we save and restore — explicit whitelist.
 # Excludes button/download_button keys which Streamlit forbids setting from code.
 _SAVEABLE_PREFIXES = (
-    "proj_", "tab5_", "tab6_", "spine_", "name_",
+    "proj_", "tab7_", "tab8_", "spine_", "name_", "sizer_",
 )
 _SAVEABLE_EXACT = {
     "se_name", "customer", "cluster_name", "install_date",
 }
 _SKIP_SUFFIXES = ("_dl_A", "_dl_B", "_dl_a", "_dl_b", "_download",
-                  "_handoff_dl", "tab5_download", "tab6_download")
+                  "_handoff_dl", "tab7_download", "tab8_download")
 
 def _is_saveable(k):
     if k in _SAVEABLE_EXACT:
@@ -421,72 +422,75 @@ if "_pending_clear" in st.session_state:
         "proj_psnt", "proj_license", "proj_sfdc", "proj_ticket",
         "proj_slack", "proj_lucid", "proj_survey", "proj_peer_rev",
         "proj_install_guide", "proj_vast_release", "proj_os_version",
-        "proj_bundle", "proj_dbox_type", "proj_cbox_type",
+        "proj_bundle",
         "proj_nb_mtu", "proj_gpu_servers", "proj_site_notes",
         "proj_ip_notes",
-        "tab5_sw_a_ip", "tab5_sw_b_ip", "tab5_gw", "tab5_ntp",
-        "tab5_isl", "tab5_uplink", "tab5_vlan",
-        "tab6_sw_a_ip", "tab6_sw_b_ip", "tab6_gw", "tab6_ntp",
-        "tab6_isl", "tab6_uplink", "tab6_vlan",
+        "tab7_sw_a_ip", "tab7_sw_b_ip", "tab7_gw", "tab7_ntp",
+        "tab7_isl", "tab7_uplink", "tab7_vlan",
+        "tab8_sw_a_ip", "tab8_sw_b_ip", "tab8_gw", "tab8_ntp",
+        "tab8_isl", "tab8_uplink", "tab8_vlan",
     ]
     for _k in _str_defaults:
         st.session_state[_k] = ""
     _bool_defaults = [
         "proj_phison", "proj_dual_nic", "proj_dbox_ha",
         "proj_encryption", "proj_ip_conflict",
-        "tab5_isl_short", "tab6_enabled", "tab6_isl_short",
+        "tab7_isl_short", "tab8_enabled", "tab8_isl_short",
     ]
     for _k in _bool_defaults:
         st.session_state[_k] = False
     st.session_state["proj_num_dboxes"] = 1
     st.session_state["proj_num_cnodes"] = 4
-    st.session_state["tab5_mgmt_vlan"]  = 1
-    st.session_state["tab6_mgmt_vlan"]  = 1
-    st.session_state["tab6_vlans"]      = ""
+    st.session_state["tab7_mgmt_vlan"]  = 1
+    st.session_state["tab8_mgmt_vlan"]  = 1
+    st.session_state["tab8_vlans"]      = ""
+    st.session_state["sizer_drr_override"] = 0.0
+    st.session_state["sizer_num_dboxes"]   = 1
+    st.session_state["sizer_num_cnodes"]   = 4
 
 # ============================================================
-# SIDEBAR
+# SIDEBAR — persistent status bar
 # ============================================================
 with st.sidebar:
     st.markdown("## ⚡ VAST Data")
     st.markdown("**SE Installation Toolkit**")
     st.markdown("---")
 
-    st.header("📋 Session Details")
-    se_name = st.text_input(
-        "SE Name",
-        value=st.session_state.get("se_name", ""),
-        placeholder="Your full name"
-    )
-    st.session_state["se_name"] = se_name
+    _sb_se       = st.session_state.get("se_name",      "—")
+    _sb_customer = st.session_state.get("customer",     "—")
+    _sb_cluster  = st.session_state.get("cluster_name", "—")
+    _sb_date     = st.session_state.get("install_date", "—")
+    _sb_proj_id  = st.session_state.get("_db_project_id")
+    _sb_milestone= st.session_state.get("_save_milestone", "—")
 
-    customer = st.text_input(
-        "Customer Name",
-        value=st.session_state.get("customer", ""),
-        placeholder="e.g. Acme Corp"
-    )
-    st.session_state["customer"] = customer
+    st.markdown(f"👤 **{_sb_se}**")
+    st.markdown(f"🏢 {_sb_customer}")
+    st.markdown(f"🖥️  {_sb_cluster}")
+    st.markdown(f"📅 {_sb_date}")
+    st.markdown("---")
 
-    cluster_name = st.text_input(
-        "Cluster Name",
-        value=st.session_state.get("cluster_name", ""),
-        placeholder="e.g. ACME-VAST-01"
-    )
-    st.session_state["cluster_name"] = cluster_name
-
-    _saved_date = st.session_state.get("install_date", date.today())
-    if isinstance(_saved_date, str):
-        try:
-            from datetime import datetime
-            _saved_date = datetime.strptime(_saved_date, "%Y-%m-%d").date()
-        except Exception:
-            _saved_date = date.today()
-    install_date = st.date_input("Install Date", value=_saved_date)
-    st.session_state["install_date"] = str(install_date)
-
+    if _sb_proj_id:
+        st.markdown(f"💾 Project **#{_sb_proj_id}**")
+        st.markdown(f"🏷️  {_sb_milestone}")
+    else:
+        st.caption("💾 Unsaved project")
 
     st.markdown("---")
-    st.caption("⚡ VAST SE Toolkit v1.1.0")
+
+    if "_online_status" not in st.session_state:
+        try:
+            requests.get("https://www.google.com", timeout=3)
+            st.session_state["_online_status"] = True
+        except Exception:
+            st.session_state["_online_status"] = False
+
+    if st.session_state.get("_online_status"):
+        st.markdown("🟢 Online")
+    else:
+        st.markdown("🔴 Offline")
+
+    st.markdown("---")
+    st.caption("⚡ VAST SE Toolkit v1.2.0")
     st.caption(f"📅 {date.today().strftime('%d %B %Y')}")
 
 
@@ -516,7 +520,7 @@ sw2_ru       = st.session_state.get("sw2_ru",      "")
 
 # Switch model for suffix
 sw_model_current = st.session_state.get(
-    "tab5_sw_model", list(HARDWARE_PROFILES.keys())[0]
+    "tab7_sw_model", list(HARDWARE_PROFILES.keys())[0]
 )
 vendor_suffix = get_sw_suffix(sw_model_current)
 
@@ -538,160 +542,55 @@ def _build_sw_name(sw_num, ru_val, vendor_sfx, gpu=False, spine=False):
 full_sw_a = _build_sw_name(1, sw1_ru, vendor_suffix)
 full_sw_b = _build_sw_name(2, sw2_ru, vendor_suffix)
 
+# Always-available identity values — read from session_state
+# so all tabs can reference them regardless of render order.
+se_name      = st.session_state.get("se_name",      "")
+customer     = st.session_state.get("customer",     "")
+cluster_name = st.session_state.get("cluster_name", "")
+install_date = st.session_state.get("install_date", str(date.today()))
+
 
 # ============================================================
 # MAIN HEADER
 # ============================================================
 st.title("⚡ VAST SE Installation Toolkit")
-if se_name and customer:
+_hdr_se   = st.session_state.get("se_name", "")
+_hdr_cust = st.session_state.get("customer", "")
+_hdr_clus = st.session_state.get("cluster_name", "")
+_hdr_date = st.session_state.get("install_date", "")
+if _hdr_se and _hdr_cust:
     st.markdown(
-        f"**SE:** {se_name} &nbsp;|&nbsp; "
-        f"**Customer:** {customer} &nbsp;|&nbsp; "
-        f"**Cluster:** {cluster_name} &nbsp;|&nbsp; "
-        f"**Date:** {install_date.strftime('%d %B %Y')}"
+        f"**SE:** {_hdr_se} &nbsp;|&nbsp; "
+        f"**Customer:** {_hdr_cust} &nbsp;|&nbsp; "
+        f"**Cluster:** {_hdr_clus} &nbsp;|&nbsp; "
+        f"**Date:** {_hdr_date}"
     )
 
 
 # ============================================================
 # TABS
 # ============================================================
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    "🧑‍💻 Session",
+    "📏 Capacity & Performance Sizer",
     "📋 Project Details",
     "📄 Confluence Install Plan",
     "✅ Validation & Pre-Flight",
     "📋 Installation Procedure",
     "🔌 Internal Switch — Southbound",
     "🖥️ Data Switch — Northbound",
-    "📏 Capacity & Performance Sizer",
     "🚀 Coming Soon"
 ])
 #=============================================================
 # ============================================================
-# TAB 1 — PROJECT DETAILS (new)
+# TAB 3 — PROJECT DETAILS
 # ============================================================
-with tab1:
+with tab3:
     st.subheader("📋 Project Details")
     st.caption(
         "Complete all sections before generating configs or the install plan. "
         "Fields marked ⚠️ are required."
     )
-
-    # ── Project Save / Load ──────────────────────────────────
-    st.markdown("---")
-    st.markdown("### 💾 Project")
-
-    if st.session_state.get("_save_msg"):
-        st.success(st.session_state.pop("_save_msg"))
-
-    if not _DB_AVAILABLE:
-        st.warning(
-            "⚠️ Database unavailable — projects cannot be saved or loaded. "
-            "Check that `db.py` is present and `/app/data/` is writable."
-        )
-    else:
-        # Auto-backup on first render each session
-        if not st.session_state.get("_auto_backup_done"):
-            _db.auto_backup_if_stale()
-            st.session_state["_auto_backup_done"] = True
-
-        proj_id = st.session_state.get("_db_project_id")
-        proj_id_label = f"Project #{proj_id}" if proj_id else "Unsaved project"
-
-        db_col1, db_col2, db_col3 = st.columns([1, 1, 1])
-
-        with db_col1:
-            if st.button("🆕 New Project", use_container_width=True):
-                st.session_state["_pending_clear"] = True
-                st.rerun()
-
-        with db_col2:
-            save_milestone = st.selectbox(
-                "Milestone",
-                options=[
-                    "Initial / Sizing",
-                    "Pre-Install",
-                    "Post-Install / Config",
-                    "Other",
-                ],
-                key="_save_milestone",
-                label_visibility="collapsed"
-            )
-            if st.button("💾 Save Project", use_container_width=True):
-                try:
-                    _save_data = {k: v for k, v in st.session_state.items()
-                                  if _is_saveable(k)}
-                    _save_data["_db_project_id"] = st.session_state.get("_db_project_id")
-                    pid = _db.save_project(
-                        _save_data,
-                        label=save_milestone
-                    )
-                    st.session_state["_db_project_id"] = pid
-                    st.session_state["_save_msg"] = f"✅ Saved — {save_milestone}"
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Save failed: {e}")
-
-        with db_col3:
-            try:
-                projects = _db.list_projects()
-            except Exception:
-                projects = []
-
-            if not projects:
-                st.info("No saved projects yet.")
-            else:
-                proj_options = {
-                    f"#{p['id']} — {p['name']} ({p['updated_at'][:10]})": p['id']
-                    for p in projects
-                }
-                selected_label = st.selectbox(
-                    "Load project",
-                    options=list(proj_options.keys()),
-                    key="_load_select",
-                    label_visibility="collapsed"
-                )
-                if st.button("📂 Load", use_container_width=True):
-                    try:
-                        pid = proj_options[selected_label]
-                        state = _db.load_project(pid)
-                        st.session_state["_pending_load"] = state
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Load failed: {e}")
-
-        # Version history expander
-        if proj_id:
-            with st.expander(f"🕓 Version history — {proj_id_label}", expanded=False):
-                try:
-                    versions = _db.get_project_versions(proj_id)
-                    if not versions:
-                        st.caption("No versions saved yet.")
-                    else:
-                        for v in versions:
-                            v_label = v['label'] or "—"
-                            v_col1, v_col2 = st.columns([3, 1])
-                            with v_col1:
-                                st.caption(
-                                    f"v{v['version_num']} · "
-                                    f"{v['saved_at'][:16].replace('T', ' ')} · "
-                                    f"{v_label}"
-                                )
-                            with v_col2:
-                                if st.button(
-                                    "Restore",
-                                    key=f"_restore_v{v['id']}",
-                                    use_container_width=True
-                                ):
-                                    try:
-                                        state = _db.load_version(v['id'])
-                                        st.session_state["_pending_load"] = state
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Restore failed: {e}")
-                except Exception as e:
-                    st.error(f"Could not load version history: {e}")
-
-        st.caption(f"Current: {proj_id_label}")
 
     # ── Cluster Inventory ────────────────────────────────────
     st.markdown("---")
@@ -733,15 +632,6 @@ with tab1:
 
     link_col1, link_col2 = st.columns(2)
     with link_col1:
-        proj_sfdc    = st.text_input("SFDC Opportunity URL",
-                         placeholder="https://vastdata.lightning.force.com/…",
-                         key="proj_sfdc")
-        proj_ticket  = st.text_input("Install Ticket URL",
-                         placeholder="https://vastdata.lightning.force.com/…",
-                         key="proj_ticket")
-        proj_slack   = st.text_input("Slack Internal Channel",
-                         placeholder="#cust-acme-corp",
-                         key="proj_slack")
         proj_psnt    = st.text_input("System PSNT",
                          placeholder="e.g. VARW255117024",
                          key="proj_psnt")
@@ -790,12 +680,28 @@ with tab1:
 
     hw_col1, hw_col2 = st.columns(2)
     with hw_col1:
-        proj_dbox_type  = st.text_input("DBox Type",
-                            placeholder="e.g. 338TB Ceres (DF-3015)",
-                            key="proj_dbox_type")
-        proj_cbox_type  = st.text_input("CNode Type",
-                            placeholder="e.g. GEN6 Turin Dell Dual NIC CX7",
-                            key="proj_cbox_type")
+        _dbox_options = list(DBOX_PROFILES.keys())
+        _dbox_current = st.session_state.get("proj_dbox_type", _dbox_options[0])
+        if _dbox_current not in _dbox_options:
+            _dbox_current = _dbox_options[0]
+        proj_dbox_type = st.selectbox(
+            "DBox Model",
+            options=_dbox_options,
+            index=_dbox_options.index(_dbox_current)
+        )
+        st.session_state["proj_dbox_type"] = proj_dbox_type
+
+        _cnode_options = list(CNODE_PERF.keys())
+        _cnode_raw = st.session_state.get("proj_cbox_type", _cnode_options[0])
+        _cnode_current = _cnode_raw.replace(" CNode", "").strip()
+        if _cnode_current not in _cnode_options:
+            _cnode_current = _cnode_options[0]
+        proj_cbox_type = st.selectbox(
+            "CNode Generation",
+            options=_cnode_options,
+            index=_cnode_options.index(_cnode_current)
+        )
+        st.session_state["proj_cbox_type"] = proj_cbox_type
         proj_dual_nic   = st.toggle("CNodes have Dual NIC",
                             value=False, key="proj_dual_nic")
     with hw_col2:
@@ -863,7 +769,7 @@ with tab1:
         "SFDC URL":         st.session_state.get("proj_sfdc",         ""),
         "DBox Type":        st.session_state.get("proj_dbox_type",    ""),
         "CNode Type":       st.session_state.get("proj_cbox_type",    ""),
-        "NTP Server":       st.session_state.get("tab5_ntp",          ""),
+        "NTP Server":       st.session_state.get("tab7_ntp",          ""),
         "Site Notes":       st.session_state.get("proj_site_notes",   ""),
     }
     missing = [k for k, v in required.items() if not v]
@@ -877,9 +783,9 @@ with tab1:
         st.success("✅ Project Details complete — ready to generate configs and install plan.")
 
 
-# TAB 5 — INTERNAL SWITCH — SOUTHBOUND
+# TAB 7 — INTERNAL SWITCH — SOUTHBOUND
 # ============================================================
-with tab5:
+with tab7:
     st.subheader("Internal Storage Fabric — Leaf Pair Configuration")
 
     col_left, col_right = st.columns([1, 2])
@@ -889,7 +795,7 @@ with tab5:
         sw_model = st.selectbox(
             "Switch Model",
             options=list(HARDWARE_PROFILES.keys()),
-            key="tab5_sw_model"
+            key="tab7_sw_model"
         )
         profile = HARDWARE_PROFILES[sw_model]
 
@@ -907,56 +813,56 @@ with tab5:
         dnode_start = st.number_input(
             "DNode start port", min_value=1,
             max_value=profile["total_ports"], value=1,
-            key="tab5_dnode_start"
+            key="tab7_dnode_start"
         )
         cnode_start = st.number_input(
             "CNode start port", min_value=1,
             max_value=profile["total_ports"],
             value=15 if profile["total_ports"] == 32 else 29,
-            key="tab5_cnode_start"
+            key="tab7_cnode_start"
         )
 
         st.markdown("#### Switch Networking")
         vlan_id = st.number_input(
             "Storage VLAN ID", min_value=1, max_value=4094,
-            value=100, key="tab5_vlan"
+            value=100, key="tab7_vlan"
         )
         sw_a_ip = st.text_input(
             "Switch A MGMT IP/mask", value="192.168.1.1/24",
-            key="tab5_sw_a_ip"
+            key="tab7_sw_a_ip"
         )
         sw_b_ip = st.text_input(
             "Switch B MGMT IP/mask", value="192.168.1.2/24",
-            key="tab5_sw_b_ip"
+            key="tab7_sw_b_ip"
         )
         mgmt_gw = st.text_input(
-            "MGMT Gateway", value="192.168.1.254", key="tab5_gw"
+            "MGMT Gateway", value="192.168.1.254", key="tab7_gw"
         )
         mgmt_vlan = st.number_input(
             "Management VLAN ID", min_value=1, max_value=4094,
-            value=int(st.session_state.get("tab5_mgmt_vlan", 1)),
-            key="tab5_mgmt_vlan"
+            value=int(st.session_state.get("tab7_mgmt_vlan", 1)),
+            key="tab7_mgmt_vlan"
         )
         ntp_srv = st.text_input(
             "NTP Server", value="",
             placeholder="Enter customer NTP server IP",
-            key="tab5_ntp"
+            key="tab7_ntp"
         )
 
         st.markdown("#### ISL / Uplink Ports")
         isl_ports_input = st.text_input(
             "ISL Ports (comma separated)",
             value=",".join([f"swp{p}" for p in profile["default_isl"]]),
-            key="tab5_isl"
+            key="tab7_isl"
         )
         uplink_ports_input = st.text_input(
             "Uplink Ports (comma separated)",
             value=",".join([f"swp{p}" for p in profile["default_uplink"]]),
-            key="tab5_uplink"
+            key="tab7_uplink"
         )
         isl_short = st.toggle(
             "ISL cable run is ≤1m (use DAC)",
-            value=False, key="tab5_isl_short"
+            value=False, key="tab7_isl_short"
         )
 
     with col_right:
@@ -1067,7 +973,7 @@ with tab5:
                     "hostname":      full_sw_a if side == "A" else full_sw_b,
                     "mgmt_ip":       sw_a_ip if side == "A" else sw_b_ip,
                     "mgmt_gw":       mgmt_gw,
-                    "mgmt_vlan":     int(st.session_state.get("tab5_mgmt_vlan", 1)),
+                    "mgmt_vlan":     int(st.session_state.get("tab7_mgmt_vlan", 1)),
                     "ntp_server":    ntp_srv or mgmt_gw,
                     "vlan_id":       vlan_id,
                     "mtu":           profile["mtu"],
@@ -1096,7 +1002,7 @@ with tab5:
                             f"{date.today().isoformat()}.txt"
                         ),
                         mime="text/plain",
-                        key=f"tab5_dl_{side}"
+                        key=f"tab7_dl_{side}"
                     )
 
     # ── SPINE-LEAF SECTION ───────────────────────────────────
@@ -1375,14 +1281,14 @@ with tab5:
 
 
 # ============================================================
-# TAB 6 — DATA SWITCH — NORTHBOUND
+# TAB 8 — DATA SWITCH — NORTHBOUND
 # ============================================================
-with tab6:
+with tab8:
     st.subheader("GPU / Data Network Switch — Leaf Pair Configuration")
 
     gpu_enabled = st.toggle(
         "Enable GPU / Data Network Switch Configuration",
-        value=False, key="tab6_enabled"
+        value=False, key="tab8_enabled"
     )
 
     if not gpu_enabled:
@@ -1398,7 +1304,7 @@ with tab6:
             sw_model2 = st.selectbox(
                 "Switch Model",
                 options=list(HARDWARE_PROFILES.keys()),
-                key="tab6_sw_model"
+                key="tab8_sw_model"
             )
             profile2 = HARDWARE_PROFILES[sw_model2]
 
@@ -1416,31 +1322,31 @@ with tab6:
             cnode_start2 = st.number_input(
                 "CNode start port", min_value=1,
                 max_value=profile2["total_ports"], value=1,
-                key="tab6_cnode_start"
+                key="tab8_cnode_start"
             )
             gpu_start2 = st.number_input(
                 "GPU Server start port", min_value=1,
                 max_value=profile2["total_ports"],
                 value=15 if profile2["total_ports"] == 32 else 29,
-                key="tab6_gpu_start"
+                key="tab8_gpu_start"
             )
             num_gpu_servers = st.slider(
                 "Number of GPU Servers",
                 min_value=1, max_value=profile2["max_node_ports"],
-                value=4, key="tab6_gpu_count"
+                value=4, key="tab8_gpu_count"
             )
             gpu_nic_speed = st.selectbox(
                 "GPU Server NIC Speed",
                 options=["200GbE", "100GbE", "400GbE"],
-                key="tab6_gpu_nic"
+                key="tab8_gpu_nic"
             )
 
             st.markdown("#### Switch Networking")
             gpu_vlans_input = st.text_input(
                 "GPU Network VLAN IDs (comma separated, max 8)",
-                value=st.session_state.get("tab6_vlans", ""),
+                value=st.session_state.get("tab8_vlans", ""),
                 placeholder="e.g. 101, 102",
-                key="tab6_vlans"
+                key="tab8_vlans"
             )
             # Parse and validate
             _raw_vlans = [v.strip() for v in gpu_vlans_input.split(",") if v.strip()]
@@ -1458,24 +1364,24 @@ with tab6:
                 st.error("❌ No valid VLAN IDs found. Enter comma-separated integers between 1 and 4094.")
             sw_a_ip2  = st.text_input(
                 "Switch A MGMT IP/mask", value="192.168.2.1/24",
-                key="tab6_sw_a_ip"
+                key="tab8_sw_a_ip"
             )
             sw_b_ip2  = st.text_input(
                 "Switch B MGMT IP/mask", value="192.168.2.2/24",
-                key="tab6_sw_b_ip"
+                key="tab8_sw_b_ip"
             )
             mgmt_gw2  = st.text_input(
-                "MGMT Gateway", value="192.168.2.254", key="tab6_gw"
+                "MGMT Gateway", value="192.168.2.254", key="tab8_gw"
             )
             mgmt_vlan2 = st.number_input(
                 "Management VLAN ID", min_value=1, max_value=4094,
-                value=int(st.session_state.get("tab6_mgmt_vlan", 1)),
-                key="tab6_mgmt_vlan"
+                value=int(st.session_state.get("tab8_mgmt_vlan", 1)),
+                key="tab8_mgmt_vlan"
             )
             ntp_srv2  = st.text_input(
                 "NTP Server", value="",
                 placeholder="Enter customer NTP server IP",
-                key="tab6_ntp"
+                key="tab8_ntp"
             )
 
             st.markdown("#### ISL / Uplink Ports")
@@ -1484,18 +1390,18 @@ with tab6:
                 value=",".join(
                     [f"swp{p}" for p in profile2["default_isl"]]
                 ),
-                key="tab6_isl"
+                key="tab8_isl"
             )
             uplink_ports_input2 = st.text_input(
                 "Uplink Ports (comma separated)",
                 value=",".join(
                     [f"swp{p}" for p in profile2["default_uplink"]]
                 ),
-                key="tab6_uplink"
+                key="tab8_uplink"
             )
             isl_short2 = st.toggle(
                 "ISL cable run is ≤1m (use DAC)",
-                value=False, key="tab6_isl_short"
+                value=False, key="tab8_isl_short"
             )
 
         with col_right2:
@@ -1700,7 +1606,7 @@ with tab6:
                         ),
                         "mgmt_ip":       sw_a_ip2 if side == "A" else sw_b_ip2,
                         "mgmt_gw":       mgmt_gw2,
-                        "mgmt_vlan":     int(st.session_state.get("tab6_mgmt_vlan", 1)),
+                        "mgmt_vlan":     int(st.session_state.get("tab8_mgmt_vlan", 1)),
                         "ntp_server":    ntp_srv2 or mgmt_gw2,
                         "gpu_vlans":     _valid_vlans,
                         "vlan_id":       _valid_vlans[0] if _valid_vlans else 200,
@@ -1727,12 +1633,12 @@ with tab6:
                             label=f"💾 Download GPU Switch {side} Config",
                             data=config_text2,
                             file_name=(
-                                f"{pfx}_GPU_SW{side}_"
+                                f"{pfx}_VAST_GPU_SW{side}_"
                                 f"{profile2['vendor'].upper()}_"
                                 f"{date.today().isoformat()}.txt"
                             ),
                             mime="text/plain",
-                            key=f"tab6_dl_{side}"
+                            key=f"tab8_dl_{side}"
                         )
 
             # Customer Handoff Document
@@ -1806,14 +1712,14 @@ For questions contact your VAST SE: {se_name or "—"}
                     f"{date.today().isoformat()}.txt"
                 ),
                 mime="text/plain",
-                key="tab6_handoff_dl"
+                key="tab8_handoff_dl"
             )
 
 
 # ============================================================
-# TAB 3 — VALIDATION & PRE-FLIGHT
+# TAB 5 — VALIDATION & PRE-FLIGHT
 # ============================================================
-with tab3:
+with tab5:
     st.subheader("Validation & Pre-Flight Checks")
     st.caption(
         "Run through all checks below before starting the VAST bootstrap. "
@@ -1822,20 +1728,20 @@ with tab3:
 
     # Grab state from other tabs
     profile_t3     = HARDWARE_PROFILES.get(
-        st.session_state.get("tab5_sw_model",
+        st.session_state.get("tab7_sw_model",
         list(HARDWARE_PROFILES.keys())[0])
     )
-    vlan_t3        = st.session_state.get("tab5_vlan",   100)
-    sw_a_t3        = st.session_state.get("tab5_sw_a_ip","192.168.1.1/24")
-    sw_b_t3        = st.session_state.get("tab5_sw_b_ip","192.168.1.2/24")
-    ntp_t3         = st.session_state.get("tab5_ntp",    "")
-    isl_t3         = st.session_state.get("tab5_isl",    "")
-    dnode_st_t3    = int(st.session_state.get("tab5_dnode_start", 1))
-    cnode_st_t3    = int(st.session_state.get("tab5_cnode_start", 15))
-    isl_short_t3   = st.session_state.get("tab5_isl_short", False)
-    gpu_enabled_t3 = st.session_state.get("tab6_enabled", False)
+    vlan_t3        = st.session_state.get("tab7_vlan",   100)
+    sw_a_t3        = st.session_state.get("tab7_sw_a_ip","192.168.1.1/24")
+    sw_b_t3        = st.session_state.get("tab7_sw_b_ip","192.168.1.2/24")
+    ntp_t3         = st.session_state.get("tab7_ntp",    "")
+    isl_t3         = st.session_state.get("tab7_isl",    "")
+    dnode_st_t3    = int(st.session_state.get("tab7_dnode_start", 1))
+    cnode_st_t3    = int(st.session_state.get("tab7_cnode_start", 15))
+    isl_short_t3   = st.session_state.get("tab7_isl_short", False)
+    gpu_enabled_t3 = st.session_state.get("tab8_enabled", False)
     sw_model_t3    = st.session_state.get(
-        "tab5_sw_model", list(HARDWARE_PROFILES.keys())[0]
+        "tab7_sw_model", list(HARDWARE_PROFILES.keys())[0]
     )
 
     sw_a_ip_only = sw_a_t3.split("/")[0]
@@ -1966,8 +1872,8 @@ with tab3:
         },
         {
             "Check":  "MGMT Gateway reachable",
-            "Value":  st.session_state.get("tab5_gw", "—"),
-            "Action": f"ping {st.session_state.get('tab5_gw', '—')}"
+            "Value":  st.session_state.get("tab7_gw", "—"),
+            "Action": f"ping {st.session_state.get('tab7_gw', '—')}"
         },
         {
             "Check":  "NTP Server reachable",
@@ -2315,7 +2221,7 @@ READY FOR BOOTSTRAP
 
     total_node_cables   = (num_dboxes * 2 * 2) + (num_cnodes * 2)
     total_isl_cables    = len(isl_list_t3)
-    uplink_t3           = st.session_state.get("tab5_uplink", "")
+    uplink_t3           = st.session_state.get("tab7_uplink", "")
     uplink_list_t3      = [
         p.strip() for p in uplink_t3.split(",") if p.strip()
     ]
@@ -2443,9 +2349,9 @@ Generated by: VAST SE Toolkit v1.0.0
         key="tab3_equip_dl"
     )
 # ============================================================
-# TAB 4 — INSTALLATION PROCEDURE
+# TAB 6 — INSTALLATION PROCEDURE
 # ============================================================
-with tab4:
+with tab6:
     st.subheader("Switch Installation Procedure")
     st.caption(
         "Step-by-step procedure personalised for this session. "
@@ -2455,29 +2361,29 @@ with tab4:
 
     # Pull session state
     proc_sw_model   = st.session_state.get(
-        "tab5_sw_model", list(HARDWARE_PROFILES.keys())[0]
+        "tab7_sw_model", list(HARDWARE_PROFILES.keys())[0]
     )
     proc_profile    = HARDWARE_PROFILES[proc_sw_model]
-    proc_sw_a_ip    = st.session_state.get("tab5_sw_a_ip", "192.168.1.1/24")
-    proc_sw_b_ip    = st.session_state.get("tab5_sw_b_ip", "192.168.1.2/24")
-    proc_ntp        = st.session_state.get("tab5_ntp", "")
-    proc_gpu        = st.session_state.get("tab6_enabled", False)
-    proc_gpu_sw_a   = st.session_state.get("tab6_sw_a_ip", "192.168.2.1/24")
-    proc_gpu_sw_b   = st.session_state.get("tab6_sw_b_ip", "192.168.2.2/24")
+    proc_sw_a_ip    = st.session_state.get("tab7_sw_a_ip", "192.168.1.1/24")
+    proc_sw_b_ip    = st.session_state.get("tab7_sw_b_ip", "192.168.1.2/24")
+    proc_ntp        = st.session_state.get("tab7_ntp", "")
+    proc_gpu        = st.session_state.get("tab8_enabled", False)
+    proc_gpu_sw_a   = st.session_state.get("tab8_sw_a_ip", "192.168.2.1/24")
+    proc_gpu_sw_b   = st.session_state.get("tab8_sw_b_ip", "192.168.2.2/24")
 
     # Build filenames matching what the toolkit generates
     today_str       = date.today().isoformat()
     vendor_up       = proc_profile["vendor"].upper()
-    fname_sw_a      = f"{pfx}_SWA_{vendor_up}_{today_str}.txt"
-    fname_sw_b      = f"{pfx}_SWB_{vendor_up}_{today_str}.txt"
+    fname_sw_a      = f"{pfx}_VAST_SWA_{vendor_up}_{today_str}.txt"
+    fname_sw_b      = f"{pfx}_VAST_SWB_{vendor_up}_{today_str}.txt"
 
     proc_gpu_model  = st.session_state.get(
-        "tab6_sw_model", list(HARDWARE_PROFILES.keys())[0]
+        "tab8_sw_model", list(HARDWARE_PROFILES.keys())[0]
     )
     proc_gpu_profile = HARDWARE_PROFILES[proc_gpu_model]
     gpu_vendor_up   = proc_gpu_profile["vendor"].upper()
-    fname_gpu_sw_a  = f"{pfx}_GPU_SWA_{gpu_vendor_up}_{today_str}.txt"
-    fname_gpu_sw_b  = f"{pfx}_GPU_SWB_{gpu_vendor_up}_{today_str}.txt"
+    fname_gpu_sw_a  = f"{pfx}_VAST_GPU_SWA_{gpu_vendor_up}_{today_str}.txt"
+    fname_gpu_sw_b  = f"{pfx}_VAST_GPU_SWB_{gpu_vendor_up}_{today_str}.txt"
 
     spine_enabled   = topology == "Spine-Leaf"
     proc_spine_model = st.session_state.get(
@@ -2485,8 +2391,8 @@ with tab4:
     )
     proc_spine_profile = HARDWARE_PROFILES[proc_spine_model]
     spine_vendor_up = proc_spine_profile["vendor"].upper()
-    fname_spine_a   = f"{pfx}_SPINE_A_{spine_vendor_up}_{today_str}.txt"
-    fname_spine_b   = f"{pfx}_SPINE_B_{spine_vendor_up}_{today_str}.txt"
+    fname_spine_a   = f"{pfx}_VAST_SPINE_A_{spine_vendor_up}_{today_str}.txt"
+    fname_spine_b   = f"{pfx}_VAST_SPINE_B_{spine_vendor_up}_{today_str}.txt"
 
     proc_spine_a_ip = st.session_state.get("spine_a_ip", "192.168.3.1/24")
     proc_spine_b_ip = st.session_state.get("spine_b_ip", "192.168.3.2/24")
@@ -2772,9 +2678,9 @@ with tab4:
     )
 
 # ============================================================
-# TAB 2 — CONFLUENCE INSTALL PLAN GENERATOR
+# TAB 4 — CONFLUENCE INSTALL PLAN GENERATOR
 # ============================================================
-with tab2:
+with tab4:
     try:
         st.write("TAB5 ALIVE")  # ← add this as the very first line
         st.subheader("📄 Confluence Install Plan Generator")
@@ -2813,22 +2719,22 @@ with tab2:
         p_site_notes   = st.session_state.get("proj_site_notes",    "")
 
         # ── Pull session data from other tabs ───────────────────────
-        t1_sw_model    = st.session_state.get("tab5_sw_model",      list(HARDWARE_PROFILES.keys())[0])
+        t1_sw_model    = st.session_state.get("tab7_sw_model",      list(HARDWARE_PROFILES.keys())[0])
         t1_profile     = HARDWARE_PROFILES[t1_sw_model]
-        t1_sw_a_ip     = st.session_state.get("tab5_sw_a_ip",       "192.168.1.1/24")
-        t1_sw_b_ip     = st.session_state.get("tab5_sw_b_ip",       "192.168.1.2/24")
-        t1_mgmt_gw     = st.session_state.get("tab5_gw",            "192.168.1.254")
-        t1_ntp         = st.session_state.get("tab5_ntp",           "")
-        t1_vlan        = st.session_state.get("tab5_vlan",          100)
-        t1_isl         = st.session_state.get("tab5_isl",           "")
-        t1_uplink      = st.session_state.get("tab5_uplink",        "")
-        t1_dnode_start = int(st.session_state.get("tab5_dnode_start", 1))
-        t1_cnode_start = int(st.session_state.get("tab5_cnode_start", 15))
+        t1_sw_a_ip     = st.session_state.get("tab7_sw_a_ip",       "192.168.1.1/24")
+        t1_sw_b_ip     = st.session_state.get("tab7_sw_b_ip",       "192.168.1.2/24")
+        t1_mgmt_gw     = st.session_state.get("tab7_gw",            "192.168.1.254")
+        t1_ntp         = st.session_state.get("tab7_ntp",           "")
+        t1_vlan        = st.session_state.get("tab7_vlan",          100)
+        t1_isl         = st.session_state.get("tab7_isl",           "")
+        t1_uplink      = st.session_state.get("tab7_uplink",        "")
+        t1_dnode_start = int(st.session_state.get("tab7_dnode_start", 1))
+        t1_cnode_start = int(st.session_state.get("tab7_cnode_start", 15))
 
-        t2_enabled     = st.session_state.get("tab6_enabled",       False)
-        t2_sw_a_ip     = st.session_state.get("tab6_sw_a_ip",       "192.168.2.1/24")
-        t2_sw_b_ip     = st.session_state.get("tab6_sw_b_ip",       "192.168.2.2/24")
-        t2_sw_model    = st.session_state.get("tab6_sw_model",      list(HARDWARE_PROFILES.keys())[0])
+        t2_enabled     = st.session_state.get("tab8_enabled",       False)
+        t2_sw_a_ip     = st.session_state.get("tab8_sw_a_ip",       "192.168.2.1/24")
+        t2_sw_b_ip     = st.session_state.get("tab8_sw_b_ip",       "192.168.2.2/24")
+        t2_sw_model    = st.session_state.get("tab8_sw_model",      list(HARDWARE_PROFILES.keys())[0])
 
         spine_en       = (topology == "Spine-Leaf")
         sp_a_ip        = st.session_state.get("spine_a_ip",         "192.168.3.1/24")
@@ -2846,18 +2752,25 @@ with tab2:
         sp_b_ip_only   = sp_b_ip.split("/")[0]
 
         today_str      = date.today().isoformat()
-        today_nice     = install_date.strftime("%d %B %Y")
+        _id = install_date
+        if isinstance(_id, str):
+            try:
+                from datetime import datetime as _dt2
+                _id = _dt2.strptime(_id, "%Y-%m-%d").date()
+            except Exception:
+                _id = date.today()
+        today_nice     = _id.strftime("%d %B %Y")
         vendor_up      = t1_profile["vendor"].upper()
         t2_profile     = HARDWARE_PROFILES[t2_sw_model]
         sp_profile     = HARDWARE_PROFILES[sp_model]
         sp_vsuf        = get_sw_suffix(sp_model)
 
-        fname_sw_a     = f"{pfx}_SWA_{vendor_up}_{today_str}.txt"
-        fname_sw_b     = f"{pfx}_SWB_{vendor_up}_{today_str}.txt"
-        fname_gpu_a    = f"{pfx}_GPU_SWA_{t2_profile['vendor'].upper()}_{today_str}.txt"
-        fname_gpu_b    = f"{pfx}_GPU_SWB_{t2_profile['vendor'].upper()}_{today_str}.txt"
-        fname_sp_a     = f"{pfx}_SPINE_A_{sp_profile['vendor'].upper()}_{today_str}.txt"
-        fname_sp_b     = f"{pfx}_SPINE_B_{sp_profile['vendor'].upper()}_{today_str}.txt"
+        fname_sw_a     = f"{pfx}_VAST_SWA_{vendor_up}_{today_str}.txt"
+        fname_sw_b     = f"{pfx}_VAST_SWB_{vendor_up}_{today_str}.txt"
+        fname_gpu_a    = f"{pfx}_VAST_GPU_SWA_{t2_profile['vendor'].upper()}_{today_str}.txt"
+        fname_gpu_b    = f"{pfx}_VAST_GPU_SWB_{t2_profile['vendor'].upper()}_{today_str}.txt"
+        fname_sp_a     = f"{pfx}_VAST_SPINE_A_{sp_profile['vendor'].upper()}_{today_str}.txt"
+        fname_sp_b     = f"{pfx}_VAST_SPINE_B_{sp_profile['vendor'].upper()}_{today_str}.txt"
 
         isl_ports      = [p.strip() for p in t1_isl.split(",") if p.strip()]
         uplink_ports   = [p.strip() for p in t1_uplink.split(",") if p.strip()]
@@ -3103,7 +3016,7 @@ with tab2:
 
         gpu_sw_section = ""
         if t2_enabled:
-            gpu_ntp = st.session_state.get("tab6_ntp", "")
+            gpu_ntp = st.session_state.get("tab8_ntp", "")
             gpu_sw_section = (
                 "\n---\n\n### GPU / Data Network Switches\n\n"
                 f"**Model:** {t2_sw_model} | "
@@ -3657,7 +3570,7 @@ Document output and attach to the SFDC install case.
             data=doc,
             file_name=f"{pfx}_Install_Plan_{today_str}.md",
             mime="text/markdown",
-            key="tab5_download"
+            key="tab7_download"
         )
 
     except Exception as e:
@@ -3669,9 +3582,193 @@ Document output and attach to the SFDC install case.
 # ============================================================
 
 # ============================================================
-# TAB 7 — CAPACITY & PERFORMANCE SIZER
+#=============================================================
 # ============================================================
-with tab7:
+# TAB 1 — SESSION
+# ============================================================
+with tab1:
+    st.subheader("🧑‍💻 Session")
+    st.caption("Set your identity and manage project saves. All fields feed the sidebar status bar and the install plan.")
+
+    st.markdown("---")
+    st.markdown("### 👤 SE & Customer Identity")
+
+    id_col1, id_col2 = st.columns(2)
+    with id_col1:
+        se_name = st.text_input(
+            "SE Name",
+            value=st.session_state.get("se_name", ""),
+            placeholder="Your full name"
+        )
+        st.session_state["se_name"] = se_name
+
+        customer = st.text_input(
+            "Customer Name",
+            value=st.session_state.get("customer", ""),
+            placeholder="e.g. Acme Corp"
+        )
+        st.session_state["customer"] = customer
+
+        cluster_name = st.text_input(
+            "Cluster Name",
+            value=st.session_state.get("cluster_name", ""),
+            placeholder="e.g. ACME-VAST-01"
+        )
+        st.session_state["cluster_name"] = cluster_name
+
+    with id_col2:
+        _saved_date = st.session_state.get("install_date", date.today())
+        if isinstance(_saved_date, str):
+            try:
+                from datetime import datetime as _dt
+                _saved_date = _dt.strptime(_saved_date, "%Y-%m-%d").date()
+            except Exception:
+                _saved_date = date.today()
+        install_date = st.date_input("Install Date", value=_saved_date)
+        st.session_state["install_date"] = str(install_date)
+
+        proj_sfdc   = st.text_input("SFDC Opportunity URL",
+                        placeholder="https://vastdata.lightning.force.com/…",
+                        key="proj_sfdc")
+        proj_ticket = st.text_input("Install Ticket URL",
+                        placeholder="https://vastdata.lightning.force.com/…",
+                        key="proj_ticket")
+        proj_slack  = st.text_input("Slack Internal Channel",
+                        placeholder="#cust-acme-corp",
+                        key="proj_slack")
+
+    # ── Project Save / Load ──────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 💾 Project")
+
+    if st.session_state.get("_save_msg"):
+        st.success(st.session_state.pop("_save_msg"))
+
+    if not _DB_AVAILABLE:
+        st.warning(
+            "⚠️ Database unavailable — projects cannot be saved or loaded. "
+            "Check that `db.py` is present and `/app/data/` is writable."
+        )
+    else:
+        # Auto-backup on first render each session
+        if not st.session_state.get("_auto_backup_done"):
+            _db.auto_backup_if_stale()
+            st.session_state["_auto_backup_done"] = True
+
+        proj_id = st.session_state.get("_db_project_id")
+        proj_id_label = f"Project #{proj_id}" if proj_id else "Unsaved project"
+
+        db_col1, db_col2, db_col3 = st.columns([1, 1, 1])
+
+        with db_col1:
+            if st.button("🆕 New Project", use_container_width=True):
+                st.session_state["_pending_clear"] = True
+                st.rerun()
+
+        with db_col2:
+            save_milestone = st.selectbox(
+                "Milestone",
+                options=[
+                    "Initial / Sizing",
+                    "Pre-Install",
+                    "Post-Install / Config",
+                    "Other",
+                ],
+                key="_save_milestone",
+                label_visibility="collapsed"
+            )
+            if save_milestone == "Other":
+                save_other_notes = st.text_input(
+                    "Describe this save",
+                    placeholder="e.g. post spine-leaf config",
+                    key="_save_other_notes"
+                )
+                _final_label = f"Other: {save_other_notes}" if save_other_notes else "Other"
+            else:
+                _final_label = save_milestone
+            if st.button("💾 Save Project", use_container_width=True):
+                try:
+                    _save_data = {k: v for k, v in st.session_state.items()
+                                  if _is_saveable(k)}
+                    _save_data["_db_project_id"] = st.session_state.get("_db_project_id")
+                    pid = _db.save_project(
+                        _save_data,
+                        label=_final_label
+                    )
+                    st.session_state["_db_project_id"] = pid
+                    st.session_state["_save_msg"] = f"✅ Saved — {_final_label}"
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Save failed: {e}")
+
+        with db_col3:
+            try:
+                projects = _db.list_projects()
+            except Exception:
+                projects = []
+
+            if not projects:
+                st.info("No saved projects yet.")
+            else:
+                proj_options = {
+                    f"#{p['id']} — {p['name']} ({p['updated_at'][:10]})": p['id']
+                    for p in projects
+                }
+                selected_label = st.selectbox(
+                    "Load project",
+                    options=list(proj_options.keys()),
+                    key="_load_select",
+                    label_visibility="collapsed"
+                )
+                if st.button("📂 Load", use_container_width=True):
+                    try:
+                        pid = proj_options[selected_label]
+                        state = _db.load_project(pid)
+                        st.session_state["_pending_load"] = state
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Load failed: {e}")
+
+        # Version history expander
+        if proj_id:
+            with st.expander(f"🕓 Version history — {proj_id_label}", expanded=False):
+                try:
+                    versions = _db.get_project_versions(proj_id)
+                    if not versions:
+                        st.caption("No versions saved yet.")
+                    else:
+                        for v in versions:
+                            v_label = v['label'] or "—"
+                            v_col1, v_col2 = st.columns([3, 1])
+                            with v_col1:
+                                st.caption(
+                                    f"v{v['version_num']} · "
+                                    f"{v['saved_at'][:16].replace('T', ' ')} · "
+                                    f"{v_label}"
+                                )
+                            with v_col2:
+                                if st.button(
+                                    "Restore",
+                                    key=f"_restore_v{v['id']}",
+                                    use_container_width=True
+                                ):
+                                    try:
+                                        state = _db.load_version(v['id'])
+                                        st.session_state["_pending_load"] = state
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Restore failed: {e}")
+                except Exception as e:
+                    st.error(f"Could not load version history: {e}")
+
+        st.caption(f"Current: {proj_id_label}")
+
+
+
+# ============================================================
+# TAB 2 — CAPACITY & PERFORMANCE SIZER
+# ============================================================
+with tab2:
     st.subheader("📏 Capacity & Performance Sizer")
     st.caption("Indicative sizing only — based on published VAST performance data. Not a formal quote.")
 
@@ -3824,11 +3921,31 @@ with tab7:
         )
 
     st.markdown("---")
+
+    apply_col1, apply_col2 = st.columns([1, 2])
+    with apply_col1:
+        if st.button("📋 Apply to Project →", use_container_width=True):
+            _apply = dict(st.session_state)
+            _apply["proj_num_dboxes"] = sizer_num_dboxes
+            _apply["proj_num_cnodes"] = sizer_num_cnodes
+            _apply["proj_dbox_type"]  = sizer_dbox_model
+            _apply["proj_cbox_type"]  = sizer_cnode_gen
+            st.session_state["_pending_load"] = _apply
+            st.session_state["_save_msg"] = (
+                f"✅ Sizer applied — "
+                f"{sizer_num_dboxes}× {sizer_dbox_model}, "
+                f"{sizer_num_cnodes}× {sizer_cnode_gen}. "
+                f"Review and complete Tab 3."
+            )
+            st.rerun()
+    with apply_col2:
+        st.caption("Optional — applies hardware selection to Project Details. You can also fill Tab 3 manually.")
+
     st.caption("Performance data: VAST GEN5 Genoa and GEN6 Turin, 1MB Random I/O. Source: VAST internal benchmarks.")
 
-# TAB 8 — COMING SOON
+# TAB 9 — COMING SOON
 # ============================================================
-with tab8:
+with tab9:
     st.subheader("🚀 Coming Soon")
     st.markdown("---")
 
