@@ -440,6 +440,9 @@ if "_pending_clear" in st.session_state:
         st.session_state[_k] = False
     st.session_state["proj_num_dboxes"] = 1
     st.session_state["proj_num_cnodes"] = 4
+    st.session_state["tab5_mgmt_vlan"]  = 1
+    st.session_state["tab6_mgmt_vlan"]  = 1
+    st.session_state["tab6_vlans"]      = ""
 
 # ============================================================
 # SIDEBAR
@@ -929,6 +932,11 @@ with tab5:
         mgmt_gw = st.text_input(
             "MGMT Gateway", value="192.168.1.254", key="tab5_gw"
         )
+        mgmt_vlan = st.number_input(
+            "Management VLAN ID", min_value=1, max_value=4094,
+            value=int(st.session_state.get("tab5_mgmt_vlan", 1)),
+            key="tab5_mgmt_vlan"
+        )
         ntp_srv = st.text_input(
             "NTP Server", value="",
             placeholder="Enter customer NTP server IP",
@@ -1059,6 +1067,7 @@ with tab5:
                     "hostname":      full_sw_a if side == "A" else full_sw_b,
                     "mgmt_ip":       sw_a_ip if side == "A" else sw_b_ip,
                     "mgmt_gw":       mgmt_gw,
+                    "mgmt_vlan":     int(st.session_state.get("tab5_mgmt_vlan", 1)),
                     "ntp_server":    ntp_srv or mgmt_gw,
                     "vlan_id":       vlan_id,
                     "mtu":           profile["mtu"],
@@ -1082,7 +1091,7 @@ with tab5:
                         label=f"💾 Download Switch {side} Config",
                         data=config_text,
                         file_name=(
-                            f"{pfx}_SW{side}_"
+                            f"{pfx}_VAST_SW{side}_"
                             f"{profile['vendor'].upper()}_"
                             f"{date.today().isoformat()}.txt"
                         ),
@@ -1427,10 +1436,26 @@ with tab6:
             )
 
             st.markdown("#### Switch Networking")
-            vlan_id2  = st.number_input(
-                "GPU Network VLAN ID", min_value=1, max_value=4094,
-                value=200, key="tab6_vlan"
+            gpu_vlans_input = st.text_input(
+                "GPU Network VLAN IDs (comma separated, max 8)",
+                value=st.session_state.get("tab6_vlans", ""),
+                placeholder="e.g. 101, 102",
+                key="tab6_vlans"
             )
+            # Parse and validate
+            _raw_vlans = [v.strip() for v in gpu_vlans_input.split(",") if v.strip()]
+            _valid_vlans = []
+            for _v in _raw_vlans[:8]:
+                try:
+                    _vid = int(_v)
+                    if 1 <= _vid <= 4094:
+                        _valid_vlans.append(_vid)
+                except ValueError:
+                    pass
+            if len(_raw_vlans) > 8:
+                st.warning("⚠️ Maximum 8 VLANs supported — only the first 8 will be used.")
+            if gpu_vlans_input and not _valid_vlans:
+                st.error("❌ No valid VLAN IDs found. Enter comma-separated integers between 1 and 4094.")
             sw_a_ip2  = st.text_input(
                 "Switch A MGMT IP/mask", value="192.168.2.1/24",
                 key="tab6_sw_a_ip"
@@ -1441,6 +1466,11 @@ with tab6:
             )
             mgmt_gw2  = st.text_input(
                 "MGMT Gateway", value="192.168.2.254", key="tab6_gw"
+            )
+            mgmt_vlan2 = st.number_input(
+                "Management VLAN ID", min_value=1, max_value=4094,
+                value=int(st.session_state.get("tab6_mgmt_vlan", 1)),
+                key="tab6_mgmt_vlan"
             )
             ntp_srv2  = st.text_input(
                 "NTP Server", value="",
@@ -1557,6 +1587,7 @@ with tab6:
                 table_rows2.append({
                     "Switch Port (A)": port_str,
                     "Switch Port (B)": port_str,
+                    "VLANs":           ", ".join(str(v) for v in _valid_vlans) or "—",
                     "Device":          f"{pfx}-{cnode_label}-{i}",
                     "NIC":             "CX7 200GbE",
                     "Cable":           profile2["node_cable"]["spec"],
@@ -1669,8 +1700,10 @@ with tab6:
                         ),
                         "mgmt_ip":       sw_a_ip2 if side == "A" else sw_b_ip2,
                         "mgmt_gw":       mgmt_gw2,
+                        "mgmt_vlan":     int(st.session_state.get("tab6_mgmt_vlan", 1)),
                         "ntp_server":    ntp_srv2 or mgmt_gw2,
-                        "vlan_id":       vlan_id2,
+                        "gpu_vlans":     _valid_vlans,
+                        "vlan_id":       _valid_vlans[0] if _valid_vlans else 200,
                         "mtu":           profile2["mtu"],
                         "isl_ports":     isl_list2,
                         "uplink_ports":  uplink_list2,
@@ -1730,7 +1763,7 @@ YOUR NETWORK TEAM MUST CONFIGURE THE FOLLOWING
    - MTU: {profile2["mtu"]} (MANDATORY — do not use 9000 or 1500)
 
 2. VLAN
-   - Allow VLAN {vlan_id2} on the port-channel
+   - Allow VLANs {", ".join(str(v) for v in _valid_vlans) if _valid_vlans else "—"} on the port-channel
    - Configure as Trunk mode
 
 3. UPLINK CONNECTIVITY
@@ -1757,7 +1790,7 @@ YOUR NETWORK TEAM MUST CONFIGURE THE FOLLOWING
 
 6. VAST REQUIREMENTS SUMMARY
    - MTU:          {profile2["mtu"]}
-   - VLAN:         {vlan_id2}
+   - VLANs:        {", ".join(str(v) for v in _valid_vlans) if _valid_vlans else "—"}
    - LACP Mode:    Active
    - Port-Channel: 200
 
