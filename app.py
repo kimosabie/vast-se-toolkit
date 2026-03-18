@@ -704,6 +704,12 @@ with tab3:
         st.session_state["proj_cbox_type"] = proj_cbox_type
         proj_dual_nic   = st.toggle("CNodes have Dual NIC",
                             value=False, key="proj_dual_nic")
+        if proj_dual_nic:
+            st.caption(
+                "Right port (BF-3) → Internal Switch (Tab 7) for storage.  \n"
+                "Left port (CX7) → Data Switch (Tab 8) for client traffic.  \n"
+                "Uplinks removed from Tab 7 storage switch config."
+            )
     with hw_col2:
         proj_ipmi       = st.selectbox("IPMI Configuration",
                             options=["Outband (Cat6)", "B2B (Back-to-Back)"],
@@ -897,6 +903,17 @@ with tab7:
 
         isl_list    = [p.strip() for p in isl_ports_input.split(",")]
         uplink_list = [p.strip() for p in uplink_ports_input.split(",") if p.strip()]
+
+        # Dual NIC — second NIC handles client traffic via Tab 8 (Data Switch)
+        # so the storage fabric switch does NOT need uplink ports to customer core.
+        dual_nic = st.session_state.get("proj_dual_nic", False)
+        if dual_nic:
+            uplink_list = []
+            st.info(
+                "ℹ️ **Dual NIC mode** — uplink ports removed from storage fabric config. "
+                "CNode right port (BF-3) connects to this switch for storage traffic. "
+                "CNode left port (CX7) connects to the Data Switch (Tab 8) for client traffic."
+            )
 
         table_rows = []
         for item in table_map:
