@@ -1128,7 +1128,7 @@ with tab7:
                     "customer":      customer or "—",
                     "cluster_name":  cluster_name or "—",
                     "install_date":  str(install_date),
-                    "hostname":      full_sw_a if side == "A" else full_sw_b,
+                    "hostname":      (full_sw_a if side == "A" else full_sw_b).replace(".", "-"),
                     "mgmt_ip":       sw_a_ip if side == "A" else sw_b_ip,
                     "mgmt_gw":       mgmt_gw,
                     "mgmt_vlan":     int(st.session_state.get("tab7_mgmt_vlan", 1)),
@@ -1138,6 +1138,9 @@ with tab7:
                     "isl_ports":     isl_list,
                     "uplink_ports":  uplink_list,
                     "clag_id":       100,
+                    "mlag_mac":      "44:38:39:ff:00:01",
+                    "uplink_description": "Customer-Core",
+                    "is_gpu_switch": False,
                     "peer_ip":       sw_b_ip.split("/")[0] if side == "A"
                                      else sw_a_ip.split("/")[0],
                     "port_map":      port_map,
@@ -1761,7 +1764,7 @@ with tab8:
                         "hostname":      (
                             f"{full_sw_a}-GPU" if side == "A"
                             else f"{full_sw_b}-GPU"
-                        ),
+                        ).replace(".", "-"),
                         "mgmt_ip":       sw_a_ip2 if side == "A" else sw_b_ip2,
                         "mgmt_gw":       mgmt_gw2,
                         "mgmt_vlan":     int(st.session_state.get("tab8_mgmt_vlan", 1)),
@@ -1772,6 +1775,9 @@ with tab8:
                         "isl_ports":     isl_list2,
                         "uplink_ports":  uplink_list2,
                         "clag_id":       200,
+                        "mlag_mac":      "44:38:39:ff:00:02",
+                        "uplink_description": "Gigabrain-Firewall",
+                        "is_gpu_switch": True,
                         "peer_ip":       (
                             sw_b_ip2.split("/")[0] if side == "A"
                             else sw_a_ip2.split("/")[0]
