@@ -212,6 +212,13 @@ def delete_project(project_id: int):
         )
 
 
+def delete_version(version_id: int):
+    """Hard-delete a single version snapshot."""
+    _init_db()
+    with _connect() as conn:
+        conn.execute("DELETE FROM project_versions WHERE id=?", (version_id,))
+
+
 def get_project_versions(project_id: int) -> list[dict]:
     """
     Return all version snapshots for a project, newest first.

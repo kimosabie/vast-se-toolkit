@@ -11,6 +11,8 @@ services:
       - ./data:/app/data
       - ./templates:/app/templates:ro
       - ./images:/app/images:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - TOOLKIT_DB_PATH=/app/data/toolkit.db
     env_file:

@@ -516,7 +516,7 @@ def render_cable_summary(profile, isl_short):
 # Keys we save and restore — explicit whitelist.
 # Excludes button/download_button keys which Streamlit forbids setting from code.
 _SAVEABLE_PREFIXES = (
-    "proj_", "tab7_", "tab8_", "spine_", "name_", "sizer_",
+    "proj_", "tab7_", "tab8_", "spine_", "name_", "sizer_", "rack_",
 )
 _SAVEABLE_EXACT = {
     "se_name", "customer", "cluster_name", "install_date",
@@ -604,6 +604,14 @@ with st.sidebar:
     if _sb_proj_id:
         st.markdown(f"💾 Project **#{_sb_proj_id}**")
         st.markdown(f"🏷️  {_sb_milestone}")
+        if _DB_AVAILABLE:
+            try:
+                _sb_versions = _db.get_project_versions(_sb_proj_id)
+                if _sb_versions:
+                    _sb_latest = _sb_versions[0]
+                    st.caption(f"v{_sb_latest['version_num']} · {_sb_latest['saved_at'][:16].replace('T', ' ')}")
+            except Exception:
+                pass
     else:
         st.caption("💾 Unsaved project")
 
@@ -712,7 +720,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "🔌 Internal Switch — Southbound",
     "🖥️ Data Switch — Northbound",
     "📐 Rack Diagram",
-    "🚀 Coming Soon"
+    "🤖 AI Assistant"
 ])
 #=============================================================
 # ============================================================
@@ -3870,14 +3878,33 @@ with tab1:
                     key="_load_select",
                     label_visibility="collapsed"
                 )
-                if st.button("📂 Load", use_container_width=True):
-                    try:
-                        pid = proj_options[selected_label]
-                        state = _db.load_project(pid)
-                        st.session_state["_pending_load"] = state
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Load failed: {e}")
+                _load_col, _del_col = st.columns([1, 1])
+                with _load_col:
+                    if st.button("📂 Load", use_container_width=True):
+                        try:
+                            pid = proj_options[selected_label]
+                            state = _db.load_project(pid)
+                            st.session_state["_pending_load"] = state
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Load failed: {e}")
+                with _del_col:
+                    _del_pid = proj_options[selected_label]
+                    if st.session_state.get("_confirm_del_proj") == _del_pid:
+                        if st.button("⚠️ Confirm", use_container_width=True, type="primary"):
+                            try:
+                                _db.delete_project(_del_pid)
+                                if st.session_state.get("_db_project_id") == _del_pid:
+                                    st.session_state["_pending_clear"] = True
+                                st.session_state.pop("_confirm_del_proj", None)
+                                st.session_state["_save_msg"] = "🗑️ Project deleted."
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Delete failed: {e}")
+                    else:
+                        if st.button("🗑️ Delete", use_container_width=True):
+                            st.session_state["_confirm_del_proj"] = _del_pid
+                            st.rerun()
 
         # Version history expander
         if proj_id:
@@ -3889,7 +3916,7 @@ with tab1:
                     else:
                         for v in versions:
                             v_label = v['label'] or "—"
-                            v_col1, v_col2 = st.columns([3, 1])
+                            v_col1, v_col2, v_col3 = st.columns([4, 1, 1])
                             with v_col1:
                                 st.caption(
                                     f"v{v['version_num']} · "
@@ -3897,17 +3924,26 @@ with tab1:
                                     f"{v_label}"
                                 )
                             with v_col2:
-                                if st.button(
-                                    "Restore",
-                                    key=f"_restore_v{v['id']}",
-                                    use_container_width=True
-                                ):
+                                if st.button("Restore", key=f"_restore_v{v['id']}", use_container_width=True):
                                     try:
                                         state = _db.load_version(v['id'])
                                         st.session_state["_pending_load"] = state
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Restore failed: {e}")
+                            with v_col3:
+                                if st.session_state.get("_confirm_del_ver") == v['id']:
+                                    if st.button("⚠️", key=f"_confirm_del_v{v['id']}", use_container_width=True, help="Click to confirm delete"):
+                                        try:
+                                            _db.delete_version(v['id'])
+                                            st.session_state.pop("_confirm_del_ver", None)
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Delete failed: {e}")
+                                else:
+                                    if st.button("🗑️", key=f"_del_v{v['id']}", use_container_width=True, help="Delete this version"):
+                                        st.session_state["_confirm_del_ver"] = v['id']
+                                        st.rerun()
                 except Exception as e:
                     st.error(f"Could not load version history: {e}")
 
@@ -4113,29 +4149,26 @@ with tab9:
         _power_div      = 1000 if rack_use_kw else 1
         rack_max_power_kw = st.number_input(
             f"Max Power per Rack ({_power_unit})",
-            min_value=1.0 if rack_use_kw else 1000.0,
-            max_value=50.0 if rack_use_kw else 50000.0,
+            min_value=0.0,
             value=10.0 if rack_use_kw else 10000.0,
             step=0.5 if rack_use_kw else 500.0,
             key="rack_max_power_kw"
         )
         rack_max_power  = int(rack_max_power_kw * _power_div)  # always in W internally
-        rack_use_kg     = st.toggle("Show weight in kg", value=False, key="rack_use_kg")
-        _weight_unit    = "kg" if rack_use_kg else "lbs"
-        _weight_conv    = 0.453592 if rack_use_kg else 1.0
+        rack_use_lbs    = st.toggle("Show weight in lbs", value=False, key="rack_use_kg")
+        _weight_unit    = "lbs" if rack_use_lbs else "kg"
+        _weight_conv    = 1.0 if rack_use_lbs else 0.453592
         rack_max_weight_disp = st.number_input(
             f"Max Weight per Rack ({_weight_unit})",
-            min_value=50.0 if rack_use_kg else 100.0,
-            max_value=2268.0 if rack_use_kg else 5000.0,
-            value=1134.0 if rack_use_kg else 2500.0,
-            step=50.0 if rack_use_kg else 100.0,
+            min_value=0.0,
+            value=1134.0 if rack_use_lbs else 500.0,
+            step=50.0 if rack_use_lbs else 25.0,
             key="rack_max_weight_disp"
         )
         rack_max_weight = rack_max_weight_disp / _weight_conv  # always in lbs internally
         rack_top_down   = st.toggle("Top-down orientation (U1 at top)", value=False, key="rack_top_down")
 
         st.markdown("### 📦 Device Placement")
-        st.caption("Enter starting RU position for each device group.")
 
         _dbox_model  = st.session_state.get("proj_dbox_type",  list(DBOX_PROFILES.keys())[0])
         _cnode_gen   = st.session_state.get("proj_cbox_type",  list(CNODE_PERF.keys())[0])
@@ -4151,84 +4184,85 @@ with tab9:
         _gpu_spec    = DEVICE_SPECS.get(_gpu_model,   {"u": 1, "weight_lbs": 25,  "avg_w": 250,  "max_w": 630})
         _spine_spec  = DEVICE_SPECS.get(_spine_model, {"u": 1, "weight_lbs": 25,  "avg_w": 250,  "max_w": 630})
 
-        ru_sw_a     = st.number_input(f"Storage Switch A start RU ({_sw_model})", min_value=1, max_value=rack_u, value=1, key="rack_ru_sw_a")
-        ru_sw_b     = st.number_input(f"Storage Switch B start RU", min_value=1, max_value=rack_u, value=1 + _sw_spec["u"], key="rack_ru_sw_b")
+        rack_multi      = st.toggle("Multiple Racks", value=False, key="rack_multi")
+        num_racks       = st.slider("Number of Racks", min_value=1, max_value=4, value=2, key="rack_num_racks") if rack_multi else 1
 
+        # Build per-device template (all devices, no RU yet)
+        _tpl = []
+        _tpl.append({"Device": "Storage SW-A",  "type": "switch",     "u": _sw_spec["u"],    "color": "#E8821A", "model_key": _sw_model,    "weight": _sw_spec["weight_lbs"],    "avg_w": _sw_spec["avg_w"],    "max_w": _sw_spec["max_w"]})
+        _tpl.append({"Device": "Storage SW-B",  "type": "switch",     "u": _sw_spec["u"],    "color": "#E8821A", "model_key": _sw_model,    "weight": _sw_spec["weight_lbs"],    "avg_w": _sw_spec["avg_w"],    "max_w": _sw_spec["max_w"]})
         if _gpu_enabled:
-            ru_gpu_a = st.number_input(f"GPU Switch A start RU ({_gpu_model})", min_value=1, max_value=rack_u, value=1 + _sw_spec["u"] * 2, key="rack_ru_gpu_a")
-            ru_gpu_b = st.number_input(f"GPU Switch B start RU", min_value=1, max_value=rack_u, value=1 + _sw_spec["u"] * 2 + _gpu_spec["u"], key="rack_ru_gpu_b")
-
+            _tpl.append({"Device": "GPU SW-A",  "type": "gpu_switch", "u": _gpu_spec["u"],   "color": "#8B5CF6", "model_key": _gpu_model,   "weight": _gpu_spec["weight_lbs"],   "avg_w": _gpu_spec["avg_w"],   "max_w": _gpu_spec["max_w"]})
+            _tpl.append({"Device": "GPU SW-B",  "type": "gpu_switch", "u": _gpu_spec["u"],   "color": "#8B5CF6", "model_key": _gpu_model,   "weight": _gpu_spec["weight_lbs"],   "avg_w": _gpu_spec["avg_w"],   "max_w": _gpu_spec["max_w"]})
         if _spine_topo:
-            ru_spine_a = st.number_input(f"Spine Switch A start RU ({_spine_model})", min_value=1, max_value=rack_u, value=5, key="rack_ru_spine_a")
-            ru_spine_b = st.number_input(f"Spine Switch B start RU", min_value=1, max_value=rack_u, value=5 + _spine_spec["u"], key="rack_ru_spine_b")
+            _tpl.append({"Device": "Spine SW-A","type": "spine",      "u": _spine_spec["u"], "color": "#EF4444", "model_key": _spine_model, "weight": _spine_spec["weight_lbs"], "avg_w": _spine_spec["avg_w"], "max_w": _spine_spec["max_w"]})
+            _tpl.append({"Device": "Spine SW-B","type": "spine",      "u": _spine_spec["u"], "color": "#EF4444", "model_key": _spine_model, "weight": _spine_spec["weight_lbs"], "avg_w": _spine_spec["avg_w"], "max_w": _spine_spec["max_w"]})
+        for _i in range(1, num_cnodes + 1):
+            _tpl.append({"Device": f"{pfx}-CNODE-{_i}", "type": "cnode", "u": _cnode_spec["u"], "color": "#16A34A", "model_key": _cnode_gen,  "weight": _cnode_spec["weight_lbs"], "avg_w": _cnode_spec["avg_w"], "max_w": _cnode_spec["max_w"]})
+        for _i in range(1, num_dboxes + 1):
+            _tpl.append({"Device": f"{pfx}-DBOX-{_i}",  "type": "dbox",  "u": _dbox_spec["u"],  "color": "#2563EB", "model_key": _dbox_model, "weight": _dbox_spec["weight_lbs"],  "avg_w": _dbox_spec["avg_w"],  "max_w": _dbox_spec["max_w"]})
 
-        ru_cnodes   = st.number_input(f"CNodes start RU ({_cnode_gen})", min_value=1, max_value=rack_u, value=7, key="rack_ru_cnodes")
-        ru_dboxes   = st.number_input(f"DBoxes start RU ({_dbox_model})", min_value=1, max_value=rack_u, value=7 + num_cnodes, key="rack_ru_dboxes")
+        # Compute sequential defaults
+        _def_ru = {}
+        _cur_ru = 1
+        for _t in _tpl:
+            _def_ru[_t["Device"]] = _cur_ru
+            _cur_ru += _t["u"]
+
+        # Per-device placement rows — individual widgets, no data_editor
+        _hc1, _hc2, _hc3 = st.columns([4, 1, 2])
+        _hc1.caption("Device")
+        _hc2.caption("Rack")
+        _hc3.caption("Start RU")
+
+        _device_placement = {}
+        for _t in _tpl:
+            _k  = _t["Device"].replace(" ", "_").replace("-", "_")
+            _dc1, _dc2, _dc3 = st.columns([4, 1, 2])
+            with _dc1:
+                st.markdown(f'<p style="font-size:12px;margin:8px 0 0 0">{_t["Device"]}</p>', unsafe_allow_html=True)
+            with _dc2:
+                _rack_val = st.selectbox("Rack", options=list(range(1, num_racks + 1)),
+                                         key=f"rack_rack_{_k}", label_visibility="collapsed")
+            with _dc3:
+                _ru_val = st.number_input("RU", min_value=1, max_value=int(rack_u), step=1,
+                                          key=f"rack_ru_{_k}", label_visibility="collapsed")
+            _device_placement[_t["Device"]] = {"rack": _rack_val, "ru": _ru_val}
 
     with rack_col2:
         st.markdown("### 📊 Power & Weight Analysis")
 
-        # Build device list
+        # Build device list from per-device placement widgets
         devices = []
+        for _t in _tpl:
+            _pl = _device_placement.get(_t["Device"], {"rack": 1, "ru": _def_ru.get(_t["Device"], 1)})
+            devices.append({
+                "name":      _t["Device"],
+                "ru":        int(_pl["ru"]),
+                "rack":      int(_pl["rack"]),
+                "u":         _t["u"],
+                "weight":    _t["weight"],
+                "avg_w":     _t["avg_w"],
+                "max_w":     _t["max_w"],
+                "color":     _t["color"],
+                "type":      _t["type"],
+                "model_key": _t["model_key"],
+            })
 
-        # Storage switches
-        sw_u = _sw_spec["u"]
-        devices.append({"name": f"Storage SW-A ({_sw_model})", "ru": ru_sw_a, "u": sw_u,
-                        "weight": _sw_spec["weight_lbs"], "avg_w": _sw_spec["avg_w"],
-                        "max_w": _sw_spec["max_w"], "color": "#E8821A", "type": "switch", "model_key": _sw_model})
-        devices.append({"name": f"Storage SW-B ({_sw_model})", "ru": ru_sw_b, "u": sw_u,
-                        "weight": _sw_spec["weight_lbs"], "avg_w": _sw_spec["avg_w"],
-                        "max_w": _sw_spec["max_w"], "color": "#E8821A", "type": "switch", "model_key": _sw_model})
+        # Group devices by rack, sort each rack by RU
+        rack_groups = [[] for _ in range(num_racks)]
+        for _d in devices:
+            _ri = max(0, min(_d["rack"] - 1, num_racks - 1))
+            rack_groups[_ri].append(_d)
+        for _grp in rack_groups:
+            _grp.sort(key=lambda d: d["ru"])
 
-        # GPU switches
-        if _gpu_enabled:
-            gpu_u = _gpu_spec["u"]
-            devices.append({"name": f"GPU SW-A ({_gpu_model})", "ru": ru_gpu_a, "u": gpu_u,
-                            "weight": _gpu_spec["weight_lbs"], "avg_w": _gpu_spec["avg_w"],
-                            "max_w": _gpu_spec["max_w"], "color": "#8B5CF6", "type": "gpu_switch", "model_key": _gpu_model})
-            devices.append({"name": f"GPU SW-B ({_gpu_model})", "ru": ru_gpu_b, "u": gpu_u,
-                            "weight": _gpu_spec["weight_lbs"], "avg_w": _gpu_spec["avg_w"],
-                            "max_w": _gpu_spec["max_w"], "color": "#8B5CF6", "type": "gpu_switch", "model_key": _gpu_model})
-
-        # Spine switches
-        if _spine_topo:
-            spine_u = _spine_spec["u"]
-            devices.append({"name": f"Spine SW-A ({_spine_model})", "ru": ru_spine_a, "u": spine_u,
-                            "weight": _spine_spec["weight_lbs"], "avg_w": _spine_spec["avg_w"],
-                            "max_w": _spine_spec["max_w"], "color": "#EF4444", "type": "spine", "model_key": _spine_model})
-            devices.append({"name": f"Spine SW-B ({_spine_model})", "ru": ru_spine_b, "u": spine_u,
-                            "weight": _spine_spec["weight_lbs"], "avg_w": _spine_spec["avg_w"],
-                            "max_w": _spine_spec["max_w"], "color": "#EF4444", "type": "spine", "model_key": _spine_model})
-
-        # CNodes
-        for i in range(1, num_cnodes + 1):
-            devices.append({"name": f"{pfx}-CNODE-{i}", "ru": ru_cnodes + (i-1) * _cnode_spec["u"],
-                            "u": _cnode_spec["u"], "weight": _cnode_spec["weight_lbs"],
-                            "avg_w": _cnode_spec["avg_w"], "max_w": _cnode_spec["max_w"],
-                            "color": "#16A34A", "type": "cnode", "model_key": _cnode_gen})
-
-        # DBoxes
-        for i in range(1, num_dboxes + 1):
-            devices.append({"name": f"{pfx}-DBOX-{i}", "ru": ru_dboxes + (i-1) * _dbox_spec["u"],
-                            "u": _dbox_spec["u"], "weight": _dbox_spec["weight_lbs"],
-                            "avg_w": _dbox_spec["avg_w"], "max_w": _dbox_spec["max_w"],
-                            "color": "#2563EB", "type": "dbox", "model_key": _dbox_model})
-
-        # Sort by RU
-        devices.sort(key=lambda d: d["ru"])
-
-        # Totals
+        # Totals (across all racks)
+        devices = [d for grp in rack_groups for d in grp]
         total_weight = sum(d["weight"] for d in devices)
         total_avg_w  = sum(d["avg_w"]  for d in devices)
         total_max_w  = sum(d["max_w"]  for d in devices)
         total_u_used = sum(d["u"]      for d in devices)
-        max_ru       = max((d["ru"] + d["u"] - 1) for d in devices) if devices else 0
-
-        # Rack split logic
-        racks_needed_u = max(1, -(-max_ru // rack_u))  # ceil div
-        racks_needed_w = max(1, -(-total_weight // rack_max_weight))
-        racks_needed_p = max(1, -(-total_avg_w  // rack_max_power))
-        racks_needed   = max(racks_needed_u, racks_needed_w, racks_needed_p)
 
         # Metrics
         _disp_weight = lambda w: f"{w * _weight_conv:.0f} {_weight_unit}"
@@ -4236,45 +4270,24 @@ with tab9:
 
         m1, m2, m3, m4 = st.columns(4)
         with m1:
-            st.metric("Total U Used", f"{total_u_used}U", delta=f"{rack_u - total_u_used}U free" if racks_needed == 1 else None)
+            st.metric("Total U Used", f"{total_u_used}U")
         with m2:
             st.metric(f"Total Weight ({_weight_unit})", _disp_weight(total_weight))
         with m3:
             st.metric(f"Avg Power ({_power_unit})", _disp_power(total_avg_w))
         with m4:
-            st.metric("Racks Required", racks_needed,
-                      delta="⚠️ Multi-rack" if racks_needed > 1 else "Single rack",
-                      delta_color="inverse" if racks_needed > 1 else "normal")
+            st.metric("Racks", num_racks)
 
-        # Warnings
-        if total_weight > rack_max_weight * racks_needed:
-            st.warning(f"⚠️ Total weight ({_disp_weight(total_weight)}) exceeds {racks_needed} rack capacity ({_disp_weight(rack_max_weight * racks_needed)}).")
-        if total_avg_w > rack_max_power * racks_needed:
-            st.warning(f"⚠️ Average power ({_disp_power(total_avg_w)}) exceeds {racks_needed} rack capacity ({_disp_power(rack_max_power * racks_needed)}).")
+        # Warnings per rack
+        for _ri, _grp in enumerate(rack_groups):
+            _rw = sum(d["weight"] for d in _grp)
+            _rp = sum(d["avg_w"]  for d in _grp)
+            if _rw > rack_max_weight:
+                st.warning(f"⚠️ Rack {_ri+1} weight ({_disp_weight(_rw)}) exceeds limit ({_disp_weight(rack_max_weight)}).")
+            if _rp > rack_max_power:
+                st.warning(f"⚠️ Rack {_ri+1} avg power ({_disp_power(_rp)}) exceeds limit ({_disp_power(rack_max_power)}).")
 
         # Power & weight table
-        with st.expander("📋 Device Power & Weight Details", expanded=False):
-            _wlabel = f"Weight ({_weight_unit})"
-            _aplabel = f"Avg Power ({_power_unit})"
-            _mplabel = f"Max Power ({_power_unit})"
-            detail_rows = []
-            for d in devices:
-                detail_rows.append({
-                    "Device":     d["name"],
-                    "RU":         f"U{d['ru']}",
-                    "Height":     f"{d['u']}U",
-                    _wlabel:      round(d["weight"] * _weight_conv, 1),
-                    _aplabel:     round(d["avg_w"] / _power_div, 2) if rack_use_kw else d["avg_w"],
-                    _mplabel:     round(d["max_w"] / _power_div, 2) if rack_use_kw else d["max_w"],
-                })
-            detail_rows.append({
-                "Device": "TOTAL", "RU": "—", "Height": f"{total_u_used}U",
-                _wlabel:  round(total_weight * _weight_conv, 1),
-                _aplabel: round(total_avg_w / _power_div, 2) if rack_use_kw else total_avg_w,
-                _mplabel: round(total_max_w / _power_div, 2) if rack_use_kw else total_max_w,
-            })
-            st.dataframe(detail_rows, use_container_width=True)
-
         # ── SVG Rack Diagram ─────────────────────────────────
         st.markdown("### 🖥️ Rack Diagram")
 
@@ -4283,12 +4296,12 @@ with tab9:
             U_H      = 40      # pixels per U
             RK_W     = 460     # rack interior — 460 leaves 20px for RU label
             LABEL_W  = 28      # U label column width
-            NAME_COL = 160     # name column outside rack on right
             PAD      = 10      # outer padding
             HDR_H    = 36      # rack header height
             BAR_W    = 6       # colour bar width
-            SVG_W    = LABEL_W + RK_W + NAME_COL + PAD * 2
+            SVG_W    = LABEL_W + RK_W + PAD * 2
             SVG_H    = HDR_H + rack_u_height * U_H + PAD * 2
+            # TODO: device name column outside rack — deferred
 
 
             lines = [
@@ -4362,58 +4375,22 @@ with tab9:
                         f'<image x="{_ix}" y="{_iy}" '
                         f'width="{_iw}" height="{_ih}" '
                         f'href="data:image/png;base64,{_b64}" '
-                        f'preserveAspectRatio="xMidYMid meet" '
+                        f'preserveAspectRatio="xMidYMid slice" '
                         f'clip-path="url(#clip{rack_num})"/>'
                     )
-                # Device name — outside rack on the right
-                font_size = 9 if height_u == 1 else 10
-                label = d["name"] if len(d["name"]) < 22 else d["name"][:19] + "…"
-                _nx = PAD + LABEL_W + RK_W + 8
-                _ny = y + block_h//2 + font_size//2
-                # Colour dot
-                lines.append(
-                    f'<circle cx="{_nx + 4}" cy="{y + block_h//2}" r="4" fill="{color}"/>'
-                )
-                lines.append(
-                    f'<text x="{_nx + 12}" y="{_ny}" '
-                    f'text-anchor="start" fill="white" font-size="{font_size}">'
-                    f'{label}</text>'
-                )
+
 
             lines.append('</svg>')
             return "\n".join(lines)
 
-        # Distribute devices across racks
-        if racks_needed == 1:
-            rack_groups = [devices]
-        else:
-            # Simple distribution — fill each rack by U capacity
-            rack_groups = []
-            current_rack = []
-            current_u = 0
-            for d in sorted(devices, key=lambda x: x["ru"]):
-                if current_u + d["u"] > rack_u and current_rack:
-                    rack_groups.append(current_rack)
-                    current_rack = []
-                    current_u = 0
-                current_rack.append(d)
-                current_u += d["u"]
-            if current_rack:
-                rack_groups.append(current_rack)
-            while len(rack_groups) < racks_needed:
-                rack_groups.append([])
-
-        # Render racks side by side
-        rack_svgs = []
-        for i, rack_devs in enumerate(rack_groups):
-            rack_svgs.append(_render_rack(rack_devs, i + 1, rack_u, rack_top_down))
-
-        # Display SVGs
-        svg_cols = st.columns(min(len(rack_svgs), 3))
-        for i, svg in enumerate(rack_svgs):
-            with svg_cols[i % len(svg_cols)]:
-                st.markdown(f"**Rack {i+1}**")
-                st.components.v1.html(svg, height=rack_u * 40 + 100, scrolling=True)
+        # Render racks
+        svg_cols = st.columns(min(num_racks, 3))
+        for _ri, _rack_devs in enumerate(rack_groups):
+            with svg_cols[_ri % len(svg_cols)]:
+                st.components.v1.html(
+                    _render_rack(_rack_devs, _ri + 1, rack_u, rack_top_down),
+                    height=rack_u * 40 + 100, scrolling=True
+                )
 
         # Legend
         st.markdown("---")
@@ -4432,6 +4409,39 @@ with tab9:
                     f'color:white;font-size:12px">■ {label}</span>',
                     unsafe_allow_html=True
                 )
+
+        # ── Device Power & Weight Table ──────────────────────
+        st.markdown("---")
+        st.markdown("### 📋 Device Power & Weight Details")
+        _wlabel  = f"Weight ({_weight_unit})"
+        _aplabel = f"Avg Power ({_power_unit})"
+        _mplabel = f"Max Power ({_power_unit})"
+        _detail_rows = []
+        for d in devices:
+            _detail_rows.append({
+                "Device":  d["name"],
+                "Rack":    d.get("rack", 1),
+                "RU":      f"U{d['ru']}",
+                "Height":  f"{d['u']}U",
+                _wlabel:   round(d["weight"] * _weight_conv, 1),
+                _aplabel:  round(d["avg_w"] / _power_div, 2) if rack_use_kw else d["avg_w"],
+                _mplabel:  round(d["max_w"] / _power_div, 2) if rack_use_kw else d["max_w"],
+            })
+        _detail_rows.append({
+            "Device": "TOTAL", "Rack": "—", "RU": "—", "Height": f"{total_u_used}U",
+            _wlabel:  round(total_weight * _weight_conv, 1),
+            _aplabel: round(total_avg_w / _power_div, 2) if rack_use_kw else total_avg_w,
+            _mplabel: round(total_max_w / _power_div, 2) if rack_use_kw else total_max_w,
+        })
+        import pandas as _pd2
+        _detail_df = _pd2.DataFrame(_detail_rows)
+        st.dataframe(_detail_df, use_container_width=True, hide_index=True)
+        st.download_button(
+            "⬇️ Download as CSV",
+            data=_detail_df.to_csv(index=False),
+            file_name=f"{pfx or 'rack'}_power_weight.csv",
+            mime="text/csv",
+        )
 
         # Hardware Photo Gallery
         st.markdown("---")
@@ -4463,31 +4473,157 @@ with tab9:
             else:
                 st.caption("No device images available for current selection.")
 
-# TAB 10 — COMING SOON
+# TAB 10 — AI ASSISTANT
 # ============================================================
 with tab10:
-    st.subheader("🚀 Coming Soon")
+    st.subheader("🤖 AI Assistant")
+    st.caption("Ask questions about your current project in plain English. Runs locally via Ollama — no internet required.")
     st.markdown("---")
 
-    features = [
-("💾 Project History",
-         "SQLite database storing all previous installs on this machine. "
-         "Load a previous project, track changes over time, export to Google Drive."),
-("🔌 Hardware Selector",
-         "Product profiles for CNode (GEN5/GEN6, single/dual NIC) and DBox models. "
-         "Automatically adjusts switch config based on NIC type — "
-         "dual NIC removes uplink from storage fabric config."),
-        ("📚 Knowledge Base",
-         "Curated links to VAST Confluence, FIELD dashboard, release notes, "
-         "known issues, and installation guides. Searchable by topic."),
-        ("🤖 AI Assistant",
-         "LLM-powered config reviewer, troubleshooting guide, and natural language "
-         "query interface for VAST installation questions."),
-    ]
+    # ── Connection settings ───────────────────────────────────
+    _ai_c1, _ai_c2 = st.columns([3, 1])
+    with _ai_c1:
+        _ollama_host = st.text_input(
+            "Ollama URL",
+            value="http://host.docker.internal:11434",
+            key="llm_ollama_host",
+            help="Mac/Windows: host.docker.internal works. Linux: use http://172.17.0.1:11434"
+        )
+    with _ai_c2:
+        st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
+        _ollama_ok = False
+        _models    = []
+        try:
+            _chk = requests.get(f"{_ollama_host}/api/tags", timeout=3)
+            if _chk.status_code == 200:
+                _ollama_ok = True
+                _models = [m["name"] for m in _chk.json().get("models", [])]
+        except Exception:
+            pass
+        if _ollama_ok:
+            st.success("🟢 Connected")
+        else:
+            st.error("🔴 Ollama not found")
 
-    for title, description in features:
-        with st.expander(title):
-            st.markdown(description)
+    if not _ollama_ok:
+        st.info(
+            "**Ollama is not running.** To get started:\n\n"
+            "1. Download Ollama from **ollama.com** and install it\n"
+            "2. Run: `ollama pull llama3.2:3b`\n"
+            "3. Ollama starts automatically in the background\n\n"
+            "Recommended model: `llama3.2:3b` (~2 GB, fast on CPU)"
+        )
+    elif not _models:
+        st.warning(
+            "Ollama is running but no models are installed.\n\n"
+            "Run: `ollama pull llama3.2:3b`"
+        )
+    else:
+        _ai_m1, _ai_m2 = st.columns([2, 1])
+        with _ai_m1:
+            _selected_model = st.selectbox("Model", options=_models, key="llm_model")
+        with _ai_m2:
+            st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
+            if st.button("🗑️ Clear chat", use_container_width=True):
+                st.session_state["llm_chat_history"] = []
+                st.rerun()
 
-    st.markdown("---")
-    st.caption("Have a feature request? Raise it with your SE lead.")
+        st.markdown("---")
+
+        # ── Build project context ─────────────────────────────
+        def _build_llm_context():
+            _pfx        = st.session_state.get("cluster_name",    "UNKNOWN")
+            _se         = st.session_state.get("se_name",         "Unknown SE")
+            _cust       = st.session_state.get("customer",        "Unknown")
+            _idate      = st.session_state.get("install_date",    "Unknown")
+            _n_dbox     = int(st.session_state.get("proj_num_dboxes", 1))
+            _n_cnode    = int(st.session_state.get("proj_num_cnodes", 4))
+            _dbox_type  = st.session_state.get("proj_dbox_type",  "Unknown")
+            _cnode_type = st.session_state.get("proj_cbox_type",  "Unknown")
+            _topology   = st.session_state.get("proj_topology",   "Leaf Pair")
+            _sw_model   = st.session_state.get("tab7_sw_model",   "Unknown")
+            _sw_a_ip    = st.session_state.get("tab7_sw_a_ip",    "Not set")
+            _sw_b_ip    = st.session_state.get("tab7_sw_b_ip",    "Not set")
+            _vlan       = st.session_state.get("tab7_vlan",       "Not set")
+            _ntp        = st.session_state.get("tab7_ntp",        "Not set")
+            _mgmt_vlan  = st.session_state.get("tab7_mgmt_vlan",  "Not set")
+            _gpu_on     = st.session_state.get("tab8_enabled",    False)
+            _gpu_model  = st.session_state.get("tab8_sw_model",   "Unknown")
+            _spine_on   = _topology == "Spine-Leaf"
+            _spine_mdl  = st.session_state.get("spine_sw_model",  "Unknown")
+            _vastver    = st.session_state.get("proj_vast_version", "Not set")
+            _site_notes = st.session_state.get("proj_site_notes", "None")
+            _sfdc       = st.session_state.get("proj_sfdc",       "")
+            _ticket     = st.session_state.get("proj_ticket",     "")
+
+            # Capacity from sizer if available
+            _sizer_dbox   = st.session_state.get("sizer_dbox_type", _dbox_type)
+            _sizer_ndbox  = int(st.session_state.get("sizer_num_dboxes", _n_dbox))
+
+            return f"""You are an AI assistant embedded in the VAST SE Installation Toolkit. \
+You help VAST Systems Engineers answer questions about their current cluster installation. \
+Be concise and precise. If a question cannot be answered from the project data provided, say so clearly.
+
+=== CURRENT PROJECT ===
+Cluster:        {_pfx}
+Customer:       {_cust}
+SE:             {_se}
+Install Date:   {_idate}
+VastOS Version: {_vastver}
+SFDC:           {_sfdc or "Not set"}
+Ticket:         {_ticket or "Not set"}
+
+=== HARDWARE ===
+DBoxes:  {_n_dbox}x {_dbox_type}
+CNodes:  {_n_cnode}x {_cnode_type}
+Topology: {_topology}
+Storage Switches: {_sw_model} ({'Spine-Leaf' if _spine_on else 'Leaf Pair'})
+Spine Switches:   {'Enabled — ' + _spine_mdl if _spine_on else 'Not used'}
+GPU/Data Switches: {'Enabled — ' + _gpu_model if _gpu_on else 'Not enabled'}
+
+=== SWITCH CONFIG ===
+Storage Switch A IP:  {_sw_a_ip}
+Storage Switch B IP:  {_sw_b_ip}
+Internal Storage VLAN: {_vlan}
+Management VLAN:       {_mgmt_vlan}
+NTP Server:            {_ntp or 'Not configured'}
+
+=== SITE NOTES ===
+{_site_notes}
+
+=== VAST PLATFORM CONTEXT ===
+- VAST is a shared-everything NFS/S3 flash storage platform
+- DBoxes are storage nodes (all-flash), CNodes are stateless compute nodes
+- Internal fabric uses RoCEv2 with MLAG leaf switch pairs
+- MTU 9216 on all data paths, VLAN 69 for internal storage
+- Dual NIC CNodes use separate storage and data network fabrics
+"""
+
+        # ── Chat interface ────────────────────────────────────
+        if "llm_chat_history" not in st.session_state:
+            st.session_state["llm_chat_history"] = []
+
+        for _msg in st.session_state["llm_chat_history"]:
+            with st.chat_message(_msg["role"]):
+                st.markdown(_msg["content"])
+
+        if _prompt := st.chat_input("Ask about your cluster…"):
+            st.session_state["llm_chat_history"].append({"role": "user", "content": _prompt})
+            with st.chat_message("user"):
+                st.markdown(_prompt)
+
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking…"):
+                    try:
+                        _messages = [{"role": "system", "content": _build_llm_context()}]
+                        _messages += st.session_state["llm_chat_history"]
+                        _resp = requests.post(
+                            f"{_ollama_host}/api/chat",
+                            json={"model": _selected_model, "messages": _messages, "stream": False},
+                            timeout=120
+                        )
+                        _answer = _resp.json()["message"]["content"]
+                        st.markdown(_answer)
+                        st.session_state["llm_chat_history"].append({"role": "assistant", "content": _answer})
+                    except Exception as _e:
+                        st.error(f"LLM error: {_e}")
