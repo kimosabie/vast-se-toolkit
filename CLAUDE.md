@@ -6,12 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 VAST SE Toolkit is a Dockerized Streamlit web application for VAST Systems Engineers to automate cluster installation workflows — generating switch configs, cable guides, pre-flight checklists, and Confluence install plans. It runs locally (Windows WSL2/macOS), requires no cloud login, and targets NVIDIA Cumulus NV and Arista EOS switches.
 
+**Stack:** Python 3.11 · Streamlit 1.32 · Jinja2 · SQLite · Docker Compose
+**Repo:** https://github.com/kimosabie/vast-se-toolkit (private)
+**Dev server:** vast-dev (Tailscale) — project at `~/projects/vast-se-toolkit/`
+**Access:** http://\<tailscale-ip\>:8501
+
 ## Running the App
 
 ```bash
-# Start (builds on first run)
+# Start (builds on first run — always required after app.py changes)
 docker compose up --build -d
 # App available at http://localhost:8501
+
+# Restart without rebuild (template/image changes only)
+docker compose restart
 
 # View logs
 docker compose logs --tail=50
@@ -23,10 +31,35 @@ docker compose down
 docker compose exec vast-se-toolkit python3 -c "import ast; ast.parse(open('app.py').read())"
 ```
 
+**Important:** `app.py` is COPIED into the image at build time — `--build` is always required after any Python change. Templates in `templates/` and images in `images/` are volume-mounted — changes take effect after a simple `docker compose restart`.
+
 For local development without Docker:
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
+```
+
+### Useful one-liners
+
+```bash
+# Syntax check with line numbers
+python3 -c "
+import ast
+with open('app.py') as f: source = f.read()
+try:
+    ast.parse(source)
+    print('Syntax OK')
+except SyntaxError as e:
+    print(f'SyntaxError at line {e.lineno}: {e.msg}')
+"
+
+# Fix mixed tabs/spaces
+python3 -c "
+with open('app.py', 'r') as f: content = f.read()
+content = content.expandtabs(4)
+with open('app.py', 'w') as f: f.write(content)
+print('Done')
+"
 ```
 
 ## Architecture
@@ -44,20 +77,62 @@ streamlit run app.py
 
 **`outputs/`** — Generated config files written here, host-mounted for persistence.
 
+### File structure
+
+```
+~/projects/vast-se-toolkit/
+├── app.py                    ← main application (~4,500 lines)
+├── db.py                     ← SQLite project database module
+├── Dockerfile
+├── docker-compose.yml        ← mounts outputs/, data/, templates/, images/
+├── requirements.txt
+├── .env                      ← empty, required by docker-compose
+├── .gitignore
+├── INSTALL.md
+├── README.md
+├── templates/
+│   ├── cumulus_nv.j2         ← internal fabric leaf switch config (Cumulus)
+│   ├── arista_eos.j2         ← internal fabric leaf switch config (Arista EOS)
+│   ├── cumulus_spine.j2      ← spine switch config (Cumulus)
+│   └── arista_spine.j2       ← spine switch config (Arista EOS)
+├── images/                   ← device hardware photos (PNG, mounted read-only)
+│   ├── NVIDIA_SN3700.png
+│   ├── NVIDIA_SN4600.png
+│   ├── NVIDIA_SN4700.png
+│   ├── NVIDIA_SN5400.png
+│   ├── NVIDIA_SN5600.png
+│   ├── NVIDIA_SN5610.png
+│   ├── Arista_7050CX4-24D8.png
+│   ├── Arista_7050DX4-32S.png
+│   ├── Arista_7060DX5-32S.png
+│   ├── Arista_7060DX5-64S.png
+│   ├── Ceres_338TB_1U.png
+│   ├── Ceres_1350TB_1U.png
+│   ├── Ceres_2700TB_1U.png
+│   ├── MLK_1350TB_2U.png
+│   ├── MLK_2700TB_2U.png
+│   ├── MLK_5400TB_2U.png
+│   ├── GEN5_Genoa_CNode.png
+│   └── GEN6_Turin_CNode.png
+├── outputs/                  ← generated switch config files
+└── data/
+    └── toolkit.db            ← SQLite project database
+```
+
 ## UI Structure (10 Tabs in app.py)
 
-| Tab | Purpose |
-|-----|---------|
-| Session | Project save/load/delete, session management |
-| Capacity & Performance Sizer | Cluster capacity calculations with DRR override |
-| Project Details | Cluster inventory, topology, hardware, versions, site notes |
-| Confluence Install Plan | Auto-generated copy-paste installation guide |
-| Validation & Pre-Flight | Port count validation, LLDP scripts, cable labels |
-| Installation Procedure | Per-switch steps with real hostnames/IPs |
-| Internal Switch — Southbound | Cumulus NV + Arista EOS config gen, port mapping, cable guides |
-| Data Switch — Northbound | GPU/data network switch configuration |
-| Rack Diagram | Visual rack layout with device images, kW/kg toggles |
-| Coming Soon | Placeholder |
+| Tab | Name | Content |
+|-----|------|---------|
+| 1 | Session | SE identity, SFDC/ticket/Slack links, Save/Load/New Project |
+| 2 | Capacity & Performance Sizer | DBox/CNode hardware selector, performance curves, DRR override, Apply to Project |
+| 3 | Project Details | Cluster inventory, topology, links, hardware dropdowns, versions, site notes, completeness indicator |
+| 4 | Confluence Install Plan | Auto-generated full install plan in markdown |
+| 5 | Validation & Pre-Flight | Port count validation, LLDP script, pre-flight checklist, cable labels |
+| 6 | Installation Procedure | Per-switch steps with real hostnames/IPs/filenames |
+| 7 | Internal Switch — Southbound | Cumulus NV + Arista EOS config generation, port mapping, cable guide |
+| 8 | Data Switch — Northbound | GPU/data network switch config (optional, toggle-enabled) |
+| 9 | Rack Diagram | Visual rack diagram with device images, power/weight analysis, multi-rack support |
+| 10 | Coming Soon | Feature roadmap |
 
 ## Key Functions in app.py
 
@@ -67,12 +142,156 @@ streamlit run app.py
 - `_build_sw_name()` — constructs switch hostnames incorporating RU position
 - `_get_device_img_b64()` — loads device PNGs from `images/` as base64
 
+## Streamlit 1.32 Session State — Critical Patterns
+
+This is the most important thing to understand about this codebase.
+
+**The problem:** Streamlit 1.32 maintains a widget registry separate from session_state. Once a widget with `key="foo"` has rendered, you cannot set `st.session_state["foo"]` directly from code — it throws `StreamlitAPIException`.
+
+**The solution — `_pending_load` / `_pending_clear` pattern:**
+
+At the very top of app.py (before any widgets render), there is a handler:
+```python
+if "_pending_load" in st.session_state:
+    _pending = st.session_state.pop("_pending_load")
+    for _k, _v in _pending.items():
+        if _is_saveable(_k):
+            st.session_state[_k] = _v
+
+if "_pending_clear" in st.session_state:
+    st.session_state.pop("_pending_clear")
+    # clears all non-internal keys and resets defaults
+```
+
+When you need to SET session_state values programmatically (Load, New Project, Apply from Sizer):
+```python
+# WRONG — will throw if widget already rendered
+st.session_state["proj_num_dboxes"] = 4
+
+# CORRECT — stage it, then rerun
+_data = dict(st.session_state)
+_data["proj_num_dboxes"] = 4
+st.session_state["_pending_load"] = _data
+st.rerun()
+```
+
+### Widgets that must NOT have key= params
+
+Sidebar identity fields and any field the SE needs to set programmatically must use `value=session_state.get(...)` with no `key=` param, and manually sync back:
+```python
+se_name = st.text_input("SE Name", value=st.session_state.get("se_name", ""))
+st.session_state["se_name"] = se_name
+```
+
+### Saveable key whitelist
+
+Only keys with these prefixes are saved/loaded/restored:
+```python
+_SAVEABLE_PREFIXES = ("proj_", "tab7_", "tab8_", "spine_", "name_", "sizer_")
+_SAVEABLE_EXACT = {"se_name", "customer", "cluster_name", "install_date"}
+```
+Download button keys (`tab7_dl_A`, `tab7_dl_B` etc) are explicitly excluded — Streamlit forbids setting these from code.
+
+### Derived values block
+
+Runs on every render between the sidebar and tab definitions. Always available regardless of which tab the SE is on:
+```python
+pfx        = st.session_state.get("cluster_name", "") or "VAST"
+num_dboxes = int(st.session_state.get("proj_num_dboxes", 1))
+num_cnodes = int(st.session_state.get("proj_num_cnodes", 4))
+topology   = st.session_state.get("proj_topology", "Leaf Pair")
+se_name    = st.session_state.get("se_name", "")
+customer   = st.session_state.get("customer", "")
+cluster_name = st.session_state.get("cluster_name", "")
+install_date = st.session_state.get("install_date", str(date.today()))
+```
+
+### Session state key reference
+
+| Prefix | Tab | Description |
+|--------|-----|-------------|
+| `se_name`, `customer`, `cluster_name`, `install_date` | Tab 1 | SE identity (no key=, manual sync) |
+| `proj_*` | Tab 3 | Project details fields |
+| `proj_num_dboxes`, `proj_num_cnodes` | Tab 3 | Cluster inventory sliders |
+| `proj_dbox_type`, `proj_cbox_type` | Tab 3 | Hardware selectboxes (no key=, manual sync) |
+| `proj_dual_nic` | Tab 3 | Dual NIC toggle — drives Tab 7 uplink logic |
+| `proj_topology` | Tab 3 | "Leaf Pair" or "Spine-Leaf" |
+| `sizer_*` | Tab 2 | Sizer inputs |
+| `tab7_*` | Tab 7 | Internal switch config inputs |
+| `tab8_*` | Tab 8 | GPU/data switch config inputs |
+| `spine_*` | Tab 7 | Spine switch inputs |
+| `rack_*` | Tab 9 | Rack diagram inputs |
+| `_db_project_id` | internal | Current project ID in SQLite |
+| `_save_milestone` | Tab 1 | Selected milestone label |
+| `_pending_load` | internal | Staged state for next render |
+| `_pending_clear` | internal | Flag to clear all state on next render |
+| `_online_status` | internal | Cached online/offline check |
+| `_save_msg` | internal | Success message to show after rerun |
+
 ## Hardware Profiles
 
-Hardware specs (port counts, connector types, cable vendors, ISL/uplink ranges) are defined as dicts embedded directly in `app.py`. Supported switches:
+Hardware specs (port counts, connector types, cable vendors, ISL/uplink ranges) are defined as dicts embedded directly in `app.py`.
 
-- **NVIDIA Cumulus NV**: SN3700, SN4600, SN4700, SN5400, SN5600, SN5610
-- **Arista EOS**: 7050CX4-24D8, 7050DX4-32S, 7060DX5-32S, 7060DX5-64S
+### Switch models (HARDWARE_PROFILES dict)
+
+| Model | Vendor | OS | Ports | Speed | Form |
+|-------|--------|-----|-------|-------|------|
+| NVIDIA SN3700 | nvidia | cumulus | 32 | 200GbE | 1U |
+| NVIDIA SN4600 | nvidia | cumulus | 64 | 200GbE | 2U |
+| NVIDIA SN4700 | nvidia | cumulus | 32 | 400GbE | 1U |
+| NVIDIA SN5400 | nvidia | cumulus | 64 | 400GbE | 2U |
+| NVIDIA SN5600 | nvidia | cumulus | 64 | 800GbE | 2U |
+| NVIDIA SN5610 | nvidia | cumulus | 64 | 800GbE | 2U |
+| Arista 7050CX4-24D8 | arista | eos | 32 | 200GbE | 1U |
+| Arista 7050DX4-32S | arista | eos | 32 | 400GbE | 1U |
+| Arista 7060DX5-32S | arista | eos | 32 | 400GbE | 1U |
+| Arista 7060DX5-64S | arista | eos | 64 | 400GbE | 2U |
+
+### DBox models (DBOX_PROFILES dict)
+
+| Model | Raw TB | Usable TB | Form |
+|-------|--------|-----------|------|
+| Ceres 338TB (1U) | 338 | 245.66 | 1U |
+| Ceres 1350TB (1U) | 1350 | 982.62 | 1U |
+| Ceres 2700TB (1U) | 2700 | 1965.25 | 1U |
+| MLK 1350TB (2U) | 1350 | 1105.45 | 2U |
+| MLK 2700TB (2U) | 2700 | 2210.90 | 2U |
+| MLK 5400TB (2U) | 5400 | 4421.80 | 2U |
+
+### CNode performance (CNODE_PERF dict — per CNode, 1MB Random)
+
+| Ratio | GEN6 Turin | GEN5 Genoa |
+|-------|-----------|-----------|
+| 100% Read | 37.0 GB/s | 29.0 GB/s |
+| 80/20 | 25.1 GB/s | 17.6 GB/s |
+| 60/40 | 17.1 GB/s | 11.0 GB/s |
+| 40/60 | 13.3 GB/s | 8.1 GB/s |
+| 20/80 | 9.7 GB/s | 6.7 GB/s |
+| 100% Write | 7.6 GB/s | 3.5 GB/s |
+| 100% Write Burst | 23.0 GB/s | 10.0 GB/s |
+
+### Device physical specs (DEVICE_SPECS dict — for rack diagram)
+
+| Device | U | Weight (lbs) | Avg W | Max W |
+|--------|---|-------------|-------|-------|
+| NVIDIA SN3700 | 1 | 24.5 | 250 | 250 |
+| NVIDIA SN4600 | 2 | 32.3 | 250 | 250 |
+| NVIDIA SN4700 | 1 | 25.6 | 630 | 630 |
+| NVIDIA SN5400 | 2 | 51.8 | 670 | 1735 |
+| NVIDIA SN5600 | 2 | 51.8 | 940 | 2167 |
+| NVIDIA SN5610 | 2 | 51.8 | 940 | 2167 |
+| Arista 7050CX4-24D8 | 1 | 23.0 | 226 | 465 |
+| Arista 7050DX4-32S | 1 | 21.0 | 388 | 989 |
+| Arista 7060DX5-32S | 1 | 24.4 | 353 | 880 |
+| Arista 7060DX5-64S | 2 | 48.4 | 353 | 1716 |
+| Ceres 338TB (1U) | 1 | 50.0 | 750 | 850 |
+| Ceres 1350TB (1U) | 1 | 50.0 | 750 | 850 |
+| Ceres 2700TB (1U) | 1 | 50.0 | 750 | 850 |
+| MLK 1350TB (2U) | 2 | 135.0 | 1270 | 1600 |
+| MLK 2700TB (2U) | 2 | 135.0 | 1270 | 1600 |
+| MLK 5400TB (2U) | 2 | 135.0 | 1270 | 1600 |
+| GEN5 Genoa | 1 | 32.0 | 500 | 700 |
+| GEN6 Turin | 1 | 44.0 | 500 | 775 |
 
 ## Template Conventions
 
@@ -82,8 +301,95 @@ Hardware specs (port counts, connector types, cable vendors, ISL/uplink ranges) 
 - MLAG mac-address is unique per switch pair (derived from session state)
 - Breakout cables handled conditionally in templates
 
+### Cable rules
+
+- Node → Switch: **AOC only** (never DAC)
+- ISL between switches: DAC if ≤1m, AOC if >1m
+- Spine/Uplink: **AOC only**
+- MTU: **9216** everywhere (never 9000 or 1500)
+
+### Cumulus NV config rules
+
+- `nv set bridge domain br_default vlan 69` — mandatory
+- `nv set bridge domain br_default untagged 10` — always 10, never 1
+- `nv set interface vlan69 vlan 69` — mandatory
+- NTP: unset all 4 Cumulus defaults before setting customer NTP
+- ISL ports must be explicitly typed as `swp`
+- MTU 9216 on every port explicitly
+- No MLAG priority
+- MLAG MAC: `44:38:39:ff:00:69`
+- Management VLAN: `nv set interface eth0 vlan {{ mgmt_vlan }}`
+
+### Arista EOS config rules
+
+- VLAN 69 (`VAST-Internal`) mandatory
+- VLAN 4094 for MLAG peer link
+- `interface Vlan4094` with peer IP
+- `interface Management1` with IP, encapsulation dot1q, default route
+- No MLAG priority
+- MTU 9216 on all ports
+
+### Dual NIC logic
+
+- When `proj_dual_nic = True`: uplink_list forced to empty in Tab 7 storage switch config
+- Tab 8 (Data Switch) remains optional regardless of NIC type
+
 ## Data Persistence
 
 - SQLite DB and generated outputs are in host-mounted Docker volumes (`./data`, `./outputs`)
 - Auto-backup runs daily to `~/vast-toolkit-backups/` (configurable in Session tab)
 - State serialization strips Streamlit internals before storing as JSON
+
+**Database locations:**
+- In container: `/app/data/toolkit.db`
+- On host: `~/projects/vast-se-toolkit/data/toolkit.db`
+
+**Key db.py methods:**
+- `save_project(session_state, label)` → project_id
+- `load_project(project_id)` → dict
+- `load_version(version_id)` → dict
+- `list_projects()` → list
+- `delete_project(project_id)`
+- `get_project_versions(project_id)` → list
+- `backup(destination_path)` → filepath
+- `auto_backup_if_stale(max_age_hours=24)`
+
+## Naming Conventions
+
+- Storage Switch 1: `{CLUSTER}-NVIDIA-SW1`
+- Storage Switch 2: `{CLUSTER}-NVIDIA-SW2`
+- Spine Switch 1: `{CLUSTER}-NVIDIA-SPINE-SW1`
+- GPU Switch 1: `{CLUSTER}-NVIDIA-SW1-GPU`
+- CNode 1: `{CLUSTER}-CNODE-1`
+- DBox 1: `{CLUSTER}-DBOX-1`
+
+Generated config filenames:
+- `{CLUSTER}_VAST_SWA_NVIDIA_2026-03-18.txt`
+- `{CLUSTER}_VAST_SWB_NVIDIA_2026-03-18.txt`
+- `{CLUSTER}_VAST_GPU_SWA_NVIDIA_2026-03-18.txt`
+- `{CLUSTER}_VAST_SPINE_A_NVIDIA_2026-03-18.txt`
+
+## Known Bugs / Deferred Items
+
+1. **Rack diagram — device name labels** — removed because overlaid text and external column both had layout issues. Options to revisit: hover tooltips (JS in iframe), separate legend panel, or clickable blocks.
+
+2. **Multi-rack layout** — current auto-distribution overlaps devices. Planned redesign:
+   - Max 3 racks
+   - SE manually assigns each device group to a rack (dropdown: Rack 1 / 2 / 3) + starting RU
+   - Pre-placement summary shows total U/weight/power before placement
+   - 1 leaf pair auto-suggested per rack, spine pair in Rack 1 only
+   - Tab 7 needs "Number of Leaf Pairs" input (1–3) — each pair gets its own IP/VLAN config and generates its own A+B config files
+
+3. **Tab 7 multi-leaf-pair switch config** — currently only generates one leaf pair. Multi-rack installs need multiple leaf pairs. This is a significant Tab 7 rework.
+
+## Roadmap
+
+| Feature | Notes |
+|---------|-------|
+| Rack diagram name labels | Deferred — see known bugs above |
+| Multi-rack redesign | Max 3 racks, manual placement, weight/power pre-check |
+| Multi-leaf-pair switch config | 1–3 leaf pairs, each with own IP/VLAN/NTP, own config files |
+| Google Drive / OneDrive backup | Copy toolkit.db to sync folder |
+| KB tab | Curated VAST links, searchable |
+| LLM integration | Config reviewer, troubleshooting, natural language queries |
+| Desktop launcher (.ps1 / .command) | Already built, needs testing |
