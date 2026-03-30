@@ -147,8 +147,11 @@ http://localhost:8501
 
 ---
 
-## Stopping the app
+## Closing the app
 
+**Just close the browser tab — that's it.** The app keeps running in the background, ready for next time.
+
+**To fully stop the app** (frees memory — optional):
 ```bash
 cd ~/projects/vast-se-toolkit
 docker compose down

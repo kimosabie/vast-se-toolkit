@@ -10,7 +10,7 @@ Add-Type -AssemblyName System.Windows.Forms
 $repoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoDir
 
-# ── Docker check ─────────────────────────────────────────────
+# ── Start Docker Desktop if not running ──────────────────────
 $dockerOK = $false
 try {
     docker info 2>$null | Out-Null
@@ -18,13 +18,40 @@ try {
 } catch {}
 
 if (-not $dockerOK) {
-    [System.Windows.Forms.MessageBox]::Show(
-        "Docker Desktop is not running.`n`nPlease start Docker Desktop and try again.",
-        "VAST SE Toolkit",
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Error
-    ) | Out-Null
-    exit 1
+    Write-Host "Docker Desktop is not running — starting it..."
+
+    $dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+    if (Test-Path $dockerExe) {
+        Start-Process $dockerExe
+    } else {
+        # Fallback: try launching via Start Menu shortcut
+        Start-Process "Docker Desktop"
+    }
+
+    # Wait up to 60 seconds for Docker to become ready
+    $waited = 0
+    while ($waited -lt 60) {
+        Start-Sleep -Seconds 2
+        $waited += 2
+        try {
+            docker info 2>$null | Out-Null
+            $dockerOK = $true
+            break
+        } catch {}
+        Write-Host "Waiting for Docker Desktop to start... ($($waited)s)"
+    }
+
+    if (-not $dockerOK) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Docker Desktop did not start in time.`n`nPlease open Docker Desktop manually and try again.",
+            "VAST SE Toolkit",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+        exit 1
+    }
+
+    Write-Host "Docker Desktop is ready."
 }
 
 # ── Check for updates ─────────────────────────────────────────

@@ -145,15 +145,20 @@ This lets you start the toolkit with a double-click.
 
 ---
 
-## Stopping the app
+## Closing the app
 
-In Git Bash:
+**Just close the browser tab — that's it.** The app keeps running in the background, ready for next time.
 
+The Desktop launcher handles everything when you double-click it again:
+- If Docker Desktop isn't running, it starts it automatically
+- If the container stopped, it restarts it
+- Your data is always safe regardless
+
+**To fully stop the app** (frees memory — optional), in Git Bash:
 ```bash
 cd ~/projects/vast-se-toolkit
 docker compose down
 ```
-
 Or open **Docker Desktop** → find `vast-se-toolkit` → click Stop.
 
 ---

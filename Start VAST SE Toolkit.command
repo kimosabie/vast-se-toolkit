@@ -8,10 +8,28 @@
 # Always run from the directory this script lives in (the repo)
 cd "$(dirname "$0")"
 
-# ── Docker check ─────────────────────────────────────────────
+# ── Start Docker Desktop if not running ──────────────────────
 if ! docker info &>/dev/null; then
-    osascript -e 'display dialog "Docker Desktop is not running.\n\nPlease start Docker Desktop and try again." buttons {"OK"} default button "OK" with icon stop with title "VAST SE Toolkit"'
-    exit 1
+    echo "Docker Desktop is not running — starting it..."
+    open -a Docker
+
+    # Wait up to 60 seconds for Docker to become ready
+    READY=false
+    for i in {1..30}; do
+        sleep 2
+        if docker info &>/dev/null; then
+            READY=true
+            break
+        fi
+        echo "Waiting for Docker Desktop to start... ($((i * 2))s)"
+    done
+
+    if ! $READY; then
+        osascript -e 'display dialog "Docker Desktop did not start in time.\n\nPlease open Docker Desktop manually and try again." buttons {"OK"} default button "OK" with icon stop with title "VAST SE Toolkit"'
+        exit 1
+    fi
+
+    echo "Docker Desktop is ready."
 fi
 
 # ── Check for updates ─────────────────────────────────────────
