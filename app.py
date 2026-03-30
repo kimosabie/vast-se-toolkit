@@ -4614,7 +4614,10 @@ with tab9:
                 f'Rack {rack_num} — {rack_u_height}U</text>',
                 # Rack body background
                 f'<rect x="{PAD + LABEL_W}" y="{PAD + HDR_H}" width="{RK_W}" '
-                f'height="{rack_u_height * U_H}" fill="{T["body_fill"]}" stroke="{T["body_stroke"]}" stroke-width="2"/>',
+                f'height="{rack_u_height * U_H}" fill="{T["body_fill"]}"/>',
+                # Outer border encompassing header + body
+                f'<rect x="{PAD}" y="{PAD}" width="{LABEL_W + RK_W}" height="{HDR_H + rack_u_height * U_H}" '
+                f'rx="4" fill="none" stroke="{T["body_stroke"]}" stroke-width="2"/>',
             ]
 
             # U position markers and slot dividers

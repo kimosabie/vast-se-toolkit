@@ -393,3 +393,4 @@ Generated config filenames:
 | KB tab | Curated VAST links, searchable |
 | LLM integration | Config reviewer, troubleshooting, natural language queries |
 | Desktop launcher (.ps1 / .command) | Already built, needs testing |
+| High level diagram tab | Visual topology diagram of the cluster (CNodes, DBoxes, switches, uplinks) |

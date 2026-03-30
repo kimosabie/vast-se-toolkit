@@ -10,7 +10,7 @@ Automates switch config generation, port mapping, cable labelling, pre-flight va
 ## Quick start
 
 ```bash
-git clone https://github.com/YOUR_ORG/vast-se-toolkit.git
+git clone git@github.com:kimosabie/vast-se-toolkit.git
 cd vast-se-toolkit
 mkdir -p data outputs
 docker compose up --build -d
