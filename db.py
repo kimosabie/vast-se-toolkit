@@ -25,7 +25,26 @@ log = logging.getLogger(__name__)
 # Schema
 # ---------------------------------------------------------------------------
 
+DEVICE_CATEGORIES = ["Switch", "Server", "Storage", "UPS", "PDU", "Patch Panel", "KVM / Console", "Other"]
+
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS device_inventory (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_name TEXT    NOT NULL UNIQUE,
+    vendor       TEXT    NOT NULL DEFAULT '',
+    category     TEXT    NOT NULL DEFAULT 'Other',
+    u_height     INTEGER NOT NULL DEFAULT 1,
+    weight_lbs   REAL    NOT NULL DEFAULT 0.0,
+    avg_w        INTEGER NOT NULL DEFAULT 0,
+    max_w        INTEGER NOT NULL DEFAULT 0,
+    img_b64      TEXT    NOT NULL DEFAULT '',
+    notes        TEXT    NOT NULL DEFAULT '',
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_inv_category ON device_inventory(category);
+
 CREATE TABLE IF NOT EXISTS projects (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT    NOT NULL,
@@ -71,6 +90,15 @@ def _connect() -> sqlite3.Connection:
 
 def _init_db():
     with _connect() as conn:
+        # Migration: drop device_inventory if it has old 'name' column instead of 'product_name'
+        _has_inv = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='device_inventory'"
+        ).fetchone()
+        if _has_inv:
+            _cols = [r[1] for r in conn.execute("PRAGMA table_info(device_inventory)").fetchall()]
+            if "product_name" not in _cols:
+                conn.execute("DROP TABLE IF EXISTS device_inventory")
+                conn.execute("DROP INDEX IF EXISTS idx_inv_category")
         conn.executescript(SCHEMA)
 
 
@@ -217,6 +245,63 @@ def delete_version(version_id: int):
     _init_db()
     with _connect() as conn:
         conn.execute("DELETE FROM project_versions WHERE id=?", (version_id,))
+
+
+# ---------------------------------------------------------------------------
+# Device Inventory
+# ---------------------------------------------------------------------------
+
+def upsert_inventory_device(product_name: str, vendor: str = "", category: str = "Other",
+                             u_height: int = 1, weight_lbs: float = 0.0,
+                             avg_w: int = 0, max_w: int = 0,
+                             img_b64: str = "", notes: str = "") -> int:
+    """
+    Insert or update a product in the global inventory (keyed on product_name).
+    Returns the row id.
+    """
+    _init_db()
+    now = _now()
+    with _connect() as conn:
+        cur = conn.execute(
+            """INSERT INTO device_inventory
+               (product_name, vendor, category, u_height, weight_lbs, avg_w, max_w, img_b64, notes, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(product_name) DO UPDATE SET
+                   vendor=excluded.vendor,
+                   category=excluded.category,
+                   u_height=excluded.u_height,
+                   weight_lbs=excluded.weight_lbs,
+                   avg_w=excluded.avg_w,
+                   max_w=excluded.max_w,
+                   img_b64=CASE WHEN excluded.img_b64 != '' THEN excluded.img_b64 ELSE device_inventory.img_b64 END,
+                   notes=excluded.notes,
+                   updated_at=excluded.updated_at""",
+            (product_name, vendor, category, u_height, weight_lbs, avg_w, max_w, img_b64, notes, now, now),
+        )
+        return cur.lastrowid
+
+
+def list_inventory_devices(category: str = None) -> list[dict]:
+    """Return all inventory devices sorted by category then name."""
+    _init_db()
+    with _connect() as conn:
+        if category and category != "All":
+            rows = conn.execute(
+                "SELECT * FROM device_inventory WHERE category=? ORDER BY product_name",
+                (category,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM device_inventory ORDER BY category, product_name"
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_inventory_device(device_id: int):
+    """Remove a device from the global inventory."""
+    _init_db()
+    with _connect() as conn:
+        conn.execute("DELETE FROM device_inventory WHERE id=?", (device_id,))
 
 
 def get_project_versions(project_id: int) -> list[dict]:

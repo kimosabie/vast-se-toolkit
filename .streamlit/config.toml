@@ -1,0 +1,11 @@
+[server]
+headless = true
+fileWatcherType = "none"
+enableWebsocketCompression = true
+maxUploadSize = 10
+
+[browser]
+gatherUsageStats = false
+
+[logger]
+level = "error"

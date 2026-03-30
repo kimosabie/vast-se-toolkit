@@ -11,6 +11,17 @@ try:
 except Exception as _db_import_err:
     _DB_AVAILABLE = False
 
+_INV_CACHE_KEY = "_inv_devices_cache"
+
+def _get_inventory_cached():
+    """Return cached inventory list. Call _inv_cache_invalidate() after any write."""
+    if _INV_CACHE_KEY not in st.session_state:
+        st.session_state[_INV_CACHE_KEY] = _db.list_inventory_devices() if _DB_AVAILABLE else []
+    return st.session_state[_INV_CACHE_KEY]
+
+def _inv_cache_invalidate():
+    st.session_state.pop(_INV_CACHE_KEY, None)
+
 # ============================================================
 # APP CONFIG
 # ============================================================
@@ -357,6 +368,53 @@ def _get_device_img_b64(device_key):
     except Exception:
         return None
 
+
+@st.cache_data(max_entries=50, show_spinner=False)
+def _strip_white_bg(b64_str):
+    """Return a base64 PNG with near-white pixels made transparent. Cached across reruns."""
+    try:
+        import numpy as _np
+        from PIL import Image as _PILI
+        import io as _pio, base64 as _pb64
+        _img = _PILI.open(_pio.BytesIO(_pb64.b64decode(b64_str))).convert("RGBA")
+        _arr = _np.array(_img, dtype=_np.uint8)
+        _white = (_arr[:, :, 0] > 200) & (_arr[:, :, 1] > 200) & (_arr[:, :, 2] > 200)
+        _arr[_white, 3] = 0
+        _out = _pio.BytesIO()
+        _PILI.fromarray(_arr).save(_out, format="PNG")
+        return _pb64.b64encode(_out.getvalue()).decode()
+    except Exception:
+        return b64_str
+
+
+@st.cache_data(max_entries=20, show_spinner=False)
+def _svg_to_pdf_cached(svg_str, out_w, out_h):
+    """Convert SVG string to PDF bytes via cairosvg. Cached — only reruns when SVG changes."""
+    import cairosvg as _cairosvg
+    import io as _io
+    buf = _io.BytesIO()
+    _cairosvg.svg2pdf(bytestring=svg_str.encode(), write_to=buf,
+                      output_width=out_w, output_height=out_h)
+    return buf.getvalue()
+
+
+@st.cache_data(max_entries=20, show_spinner=False)
+def _svg_to_jpg_cached(svg_str, out_w, out_h):
+    """Convert SVG string to JPEG bytes via cairosvg. Cached — only reruns when SVG changes."""
+    import cairosvg as _cairosvg
+    from PIL import Image as _PILImage
+    import io as _io
+    png_buf = _io.BytesIO()
+    _cairosvg.svg2png(bytestring=svg_str.encode(), write_to=png_buf,
+                      output_width=out_w, output_height=out_h)
+    png_buf.seek(0)
+    img = _PILImage.open(png_buf).convert("RGBA")
+    white_bg = _PILImage.new("RGBA", img.size, (255, 255, 255, 255))
+    white_bg.paste(img, mask=img.split()[3])
+    jpg_buf = _io.BytesIO()
+    white_bg.convert("RGB").save(jpg_buf, format="JPEG", quality=92)
+    return jpg_buf.getvalue()
+
 # Data reduction estimates by use case (min, typical, max multiplier)
 DR_ESTIMATES = {
     "AI Training / Inference":  (1.0, 1.2, 1.5),
@@ -523,16 +581,34 @@ _SAVEABLE_EXACT = {
 }
 _SKIP_SUFFIXES = ("_dl_A", "_dl_B", "_dl_a", "_dl_b", "_download",
                   "_handoff_dl", "tab7_download", "tab8_download")
+# Buttons, file_uploaders, and download_buttons whose keys start with rack_ but
+# must NOT be restored from saved state (Streamlit forbids setting them via session_state).
+_SKIP_EXACT = {
+    "rack_cust_add", "rack_cust_img",
+    "rack_cust_rm",   # prefix match handled below
+    "rack_cust_name",  # old key — keep excluded for backward compat
+    "rack_pick_add",
+}
+_SKIP_PREFIXES = (
+    "rack_inv_add_", "rack_inv_del_",
+    "rack_cust_rm_",
+    "rack_dl_", "rack_gen_",
+)
 
 def _is_saveable(k):
     if k in _SAVEABLE_EXACT:
         return True
+    if k in _SKIP_EXACT:
+        return False
+    if any(k.startswith(sp) for sp in _SKIP_PREFIXES):
+        return False
     if any(k.startswith(p) for p in _SAVEABLE_PREFIXES):
         if any(k.endswith(s) or k == s for s in _SKIP_SUFFIXES):
             return False
         return True
     return False
 
+_just_loaded = False
 if "_pending_load" in st.session_state:
     _pending = st.session_state.pop("_pending_load")
     for _k, _v in _pending.items():
@@ -540,6 +616,58 @@ if "_pending_load" in st.session_state:
             st.session_state[_k] = _v
     if "_db_project_id" in _pending:
         st.session_state["_db_project_id"] = _pending["_db_project_id"]
+    _just_loaded = True
+
+# Purge any button/file_uploader/download_button keys that may have
+# leaked into session_state from an old project snapshot saved while a
+# widget was active. Streamlit forbids setting these keys programmatically.
+# Only run during project loads — running unconditionally would delete button
+# click state before widgets get to read it, making those buttons silently fail.
+if _just_loaded:
+    for _wk in list(st.session_state.keys()):
+        if _wk in _SKIP_EXACT or any(_wk.startswith(_sp) for _sp in _SKIP_PREFIXES):
+            del st.session_state[_wk]
+
+# Deferred rack-device removal: button sets _pending_rack_rm index, we apply
+# it here (before widgets render) then clear the button states so the click
+# is not replayed on subsequent reruns triggered by st.rerun().
+if "_pending_rack_rm" in st.session_state:
+    _rm_idx = st.session_state.pop("_pending_rack_rm")
+    _cur_devs = st.session_state.get("rack_custom_devices", [])
+    st.session_state["rack_custom_devices"] = [
+        d for i, d in enumerate(_cur_devs) if i != _rm_idx
+    ]
+    for _wk in list(st.session_state.keys()):
+        if _wk.startswith("rack_cust_rm_"):
+            del st.session_state[_wk]
+
+# Deferred rack-device add: button stages _pending_rack_add dict, we apply
+# it here so we can also pre-set the rack placement widget key (rack_rack_*)
+# before the widget renders, and clear rack_pick_add to prevent cascading.
+if "_pending_rack_add" in st.session_state:
+    _pa = st.session_state.pop("_pending_rack_add")
+    _pa_devs = list(st.session_state.get("rack_custom_devices", []))
+    _pa_name = _pa["name"]
+    _pa_base, _pa_idx = _pa_name, 1
+    while any(d["name"] == _pa_name for d in _pa_devs):
+        _pa_name = f"{_pa_base}-{_pa_idx}"
+        _pa_idx += 1
+    _pa_devs.append({
+        "name":         _pa_name,
+        "product_name": _pa["product_name"],
+        "u":            _pa["u"],
+        "weight_lbs":   _pa["weight_lbs"],
+        "avg_w":        _pa["avg_w"],
+        "max_w":        _pa["max_w"],
+        "img_b64":      _pa["img_b64"],
+    })
+    st.session_state["rack_custom_devices"] = _pa_devs
+    # Pre-set rack assignment so the placement selectbox starts on the right rack
+    _pa_rack_key = "rack_rack_" + _pa_name.replace(" ", "_").replace("-", "_")
+    st.session_state[_pa_rack_key] = _pa["rack_no"]
+    # Clear add-button state to prevent this from firing again on next rerun
+    if "rack_pick_add" in st.session_state:
+        del st.session_state["rack_pick_add"]
 
 if "_pending_clear" in st.session_state:
     st.session_state.pop("_pending_clear")
@@ -606,9 +734,16 @@ with st.sidebar:
         st.markdown(f"🏷️  {_sb_milestone}")
         if _DB_AVAILABLE:
             try:
-                _sb_versions = _db.get_project_versions(_sb_proj_id)
-                if _sb_versions:
-                    _sb_latest = _sb_versions[0]
+                # Cache version info — only re-query when project or save milestone changes
+                _sb_ver_ck = f"_sb_ver_{_sb_proj_id}_{_sb_milestone}"
+                if _sb_ver_ck not in st.session_state:
+                    # Clear any stale version cache entries
+                    for _vk in [k for k in st.session_state if k.startswith("_sb_ver_")]:
+                        del st.session_state[_vk]
+                    _sb_vs = _db.get_project_versions(_sb_proj_id)
+                    st.session_state[_sb_ver_ck] = _sb_vs[0] if _sb_vs else None
+                _sb_latest = st.session_state[_sb_ver_ck]
+                if _sb_latest:
                     st.caption(f"v{_sb_latest['version_num']} · {_sb_latest['saved_at'][:16].replace('T', ' ')}")
             except Exception:
                 pass
@@ -710,7 +845,7 @@ if _hdr_se and _hdr_cust:
 # ============================================================
 # TABS
 # ============================================================
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
     "🧑‍💻 Session",
     "📏 Capacity & Performance Sizer",
     "📋 Project Details",
@@ -720,6 +855,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "🔌 Internal Switch — Southbound",
     "🖥️ Data Switch — Northbound",
     "📐 Rack Diagram",
+    "📦 Device Inventory",
     "🤖 AI Assistant"
 ])
 #=============================================================
@@ -4208,6 +4344,89 @@ with tab9:
         for _i in range(1, num_dboxes + 1):
             _tpl.append({"Device": f"{pfx}-DBOX-{_i}",  "type": "dbox",  "u": _dbox_spec["u"],  "color": "#2563EB", "model_key": _dbox_model, "weight": _dbox_spec["weight_lbs"],  "avg_w": _dbox_spec["avg_w"],  "max_w": _dbox_spec["max_w"]})
 
+        # Append user-uploaded custom devices
+        for _cd in st.session_state.get("rack_custom_devices", []):
+            _tpl.append({
+                "Device":    _cd["name"],
+                "type":      "custom",
+                "u":         _cd["u"],
+                "color":     "#6B7280",
+                "model_key": _cd.get("product_name") or _cd.get("vendor", "") or "Custom",
+                "img_b64":   _cd.get("img_b64", ""),
+                "weight":    _cd["weight_lbs"],
+                "avg_w":     _cd["avg_w"],
+                "max_w":     _cd["max_w"],
+            })
+
+        # ── Add Device from Inventory ─────────────────────────
+        st.markdown("### ➕ Add Device")
+        _inv_all_rack = _get_inventory_cached()
+        if not _inv_all_rack:
+            st.caption("Your device inventory is empty — go to the **📦 Device Inventory** tab to add products.")
+        else:
+            _pick_opts = ["— select a product —"] + [d["product_name"] for d in _inv_all_rack]
+            _pick_col1, _pick_col2, _pick_col3, _pick_col4 = st.columns([3, 2, 1, 1])
+            with _pick_col1:
+                _pick_product = st.selectbox("Product", _pick_opts, key="rack_pick_product")
+            with _pick_col2:
+                _pick_dname = st.text_input("Device Name", key="rack_pick_dname",
+                                             placeholder="defaults to product name")
+            with _pick_col3:
+                _pick_rack = st.selectbox("Rack No.", options=list(range(1, num_racks + 1)),
+                                           key="rack_pick_rack",
+                                           disabled=(num_racks == 1))
+            with _pick_col4:
+                st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
+                _pick_disabled = (_pick_product == "— select a product —")
+                if st.button("+ Add", key="rack_pick_add", disabled=_pick_disabled,
+                             use_container_width=True):
+                    _sel_inv = next((d for d in _inv_all_rack if d["product_name"] == _pick_product), None)
+                    if _sel_inv:
+                        st.session_state["_pending_rack_add"] = {
+                            "name":         _pick_dname.strip() or _sel_inv["product_name"],
+                            "product_name": _sel_inv["product_name"],
+                            "u":            _sel_inv["u_height"],
+                            "weight_lbs":   _sel_inv["weight_lbs"],
+                            "avg_w":        _sel_inv["avg_w"],
+                            "max_w":        _sel_inv["max_w"],
+                            "img_b64":      _sel_inv["img_b64"],
+                            "rack_no":      int(_pick_rack),
+                        }
+                        st.rerun()
+            # Show selected product specs as a hint
+            if _pick_product != "— select a product —":
+                _hint = next((d for d in _inv_all_rack if d["product_name"] == _pick_product), None)
+                if _hint:
+                    _hint_v = f" · {_hint['vendor']}" if _hint["vendor"] else ""
+                    st.caption(
+                        f"{_hint['category']}{_hint_v} · {_hint['u_height']}U · "
+                        f"{_hint['weight_lbs']:.0f} lbs · {_hint['avg_w']}W avg / {_hint['max_w']}W max"
+                    )
+
+        # ── Devices added to this rack ───────────────────────
+        _existing_custom = st.session_state.get("rack_custom_devices", [])
+        if _existing_custom:
+            st.markdown("**In this rack:**")
+            for _ci, _cd in enumerate(_existing_custom):
+                _crl, _crr = st.columns([6, 1])
+                with _crl:
+                    _prod_lbl = (f' <span style="color:#888">({_cd["product_name"]})</span>'
+                                 if _cd.get("product_name") and _cd["product_name"] != _cd["name"]
+                                 else "")
+                    st.markdown(
+                        f'<p style="font-size:12px;margin:4px 0">'
+                        f'<b>{_cd["name"]}</b>{_prod_lbl} — '
+                        f'{_cd["u"]}U · {_cd["weight_lbs"]:.0f} lbs · '
+                        f'{_cd["avg_w"]}W avg / {_cd["max_w"]}W max'
+                        f'{"  📷" if _cd.get("img_b64") else ""}</p>',
+                        unsafe_allow_html=True,
+                    )
+                with _crr:
+                    if st.button("✕", key=f"rack_cust_rm_{_ci}",
+                                 help="Remove from this rack"):
+                        st.session_state["_pending_rack_rm"] = _ci
+                        st.rerun()
+
         # Compute sequential defaults
         _def_ru = {}
         _cur_ru = 1
@@ -4216,21 +4435,24 @@ with tab9:
             _cur_ru += _t["u"]
 
         # Per-device placement rows — individual widgets, no data_editor
-        _hc1, _hc2, _hc3 = st.columns([4, 1, 2])
-        _hc1.caption("Device")
-        _hc2.caption("Rack")
-        _hc3.caption("Start RU")
+        _hc1, _hc2, _hc3, _hc4 = st.columns([2, 2, 1, 2])
+        _hc1.caption("Device Name")
+        _hc2.caption("Model / Type")
+        _hc3.caption("Rack")
+        _hc4.caption("Start RU")
 
         _device_placement = {}
         for _t in _tpl:
             _k  = _t["Device"].replace(" ", "_").replace("-", "_")
-            _dc1, _dc2, _dc3 = st.columns([4, 1, 2])
+            _dc1, _dc2, _dc3, _dc4 = st.columns([2, 2, 1, 2])
             with _dc1:
                 st.markdown(f'<p style="font-size:12px;margin:8px 0 0 0">{_t["Device"]}</p>', unsafe_allow_html=True)
             with _dc2:
+                st.markdown(f'<p style="font-size:11px;color:#aaa;margin:8px 0 0 0">{_t["model_key"]}</p>', unsafe_allow_html=True)
+            with _dc3:
                 _rack_val = st.selectbox("Rack", options=list(range(1, num_racks + 1)),
                                          key=f"rack_rack_{_k}", label_visibility="collapsed")
-            with _dc3:
+            with _dc4:
                 _ru_val = st.number_input("RU", min_value=1, max_value=int(rack_u), step=1,
                                           key=f"rack_ru_{_k}", label_visibility="collapsed")
             _device_placement[_t["Device"]] = {"rack": _rack_val, "ru": _ru_val}
@@ -4253,6 +4475,7 @@ with tab9:
                 "color":     _t["color"],
                 "type":      _t["type"],
                 "model_key": _t["model_key"],
+                "img_b64":   _t.get("img_b64", ""),
             })
 
         # Group devices by rack, sort each rack by RU
@@ -4297,34 +4520,101 @@ with tab9:
         # ── SVG Rack Diagram ─────────────────────────────────
         st.markdown("### 🖥️ Rack Diagram")
 
-        def _render_rack(rack_devices, rack_num, rack_u_height, top_down):
-            """Render a single rack as SVG."""
+        def _render_rack(rack_devices, rack_num, rack_u_height, top_down,
+                         with_summary=False, use_kw=True, use_lbs=False, display_scale=1.0,
+                         light_theme=False):
+            """Render a single rack as SVG.
+            with_summary=True appends a device list + totals table below the diagram.
+            display_scale < 1.0 shrinks the rendered SVG for screen display via viewBox scaling.
+            light_theme=True uses a white/print-friendly colour scheme (used for PDF/JPG exports).
+            """
+            # ── Colour theme ─────────────────────────────────────
+            if light_theme:
+                T = dict(
+                    page_bg    = "white",
+                    hdr_fill   = "#ccd3e8",
+                    hdr_text   = "#111",
+                    body_fill  = "#dde2f0",
+                    body_stroke= "#000",
+                    umark      = "#555",
+                    divider    = "#bbc",
+                    slot_fill  = "#eaeff7",
+                    slot_stroke= "#99a",
+                    name_text  = "#222",
+                    sum_title  = "#444",
+                    sum_hdr    = "#666",
+                    sum_div    = "#bbb",
+                    row_even   = "#f0f0f6",
+                    row_odd    = "#e8e8f2",
+                    row_text   = "#222",
+                    tot_fill   = "#dde3f0",
+                    tot_text   = "#111",
+                )
+            else:
+                T = dict(
+                    page_bg    = "#1a1a2e",
+                    hdr_fill   = "#000000",
+                    hdr_text   = "white",
+                    body_fill  = "#000000",
+                    body_stroke= "#000000",
+                    umark      = "#555",
+                    divider    = "#1a1a1a",
+                    slot_fill  = "#000000",
+                    slot_stroke= "#1a1a1a",
+                    name_text  = "#ddd",
+                    sum_title  = "#aaa",
+                    sum_hdr    = "#888",
+                    sum_div    = "#444",
+                    row_even   = "#1e1e2e",
+                    row_odd    = "#161626",
+                    row_text   = "#ccc",
+                    tot_fill   = "#2d2d44",
+                    tot_text   = "white",
+                )
+
             U_H      = 40      # pixels per U
-            RK_W     = 460     # rack interior — 460 leaves 20px for RU label
-            LABEL_W  = 28      # U label column width
+            RK_W     = 360     # rack interior width (reduced to make room for name column)
+            LABEL_W  = 28      # U label column width (left)
+            NAME_W   = 160     # device name column width (right)
+            NAME_GAP = 8       # gap between rack edge and name column
             PAD      = 10      # outer padding
             HDR_H    = 36      # rack header height
             BAR_W    = 6       # colour bar width
-            SVG_W    = LABEL_W + RK_W + PAD * 2
-            SVG_H    = HDR_H + rack_u_height * U_H + PAD * 2
-            # TODO: device name column outside rack — deferred
+            SVG_W    = PAD + LABEL_W + RK_W + NAME_GAP + NAME_W + PAD
+            RACK_H   = HDR_H + rack_u_height * U_H + PAD * 2
 
+            # Summary table geometry (only relevant when with_summary=True)
+            ROW_H    = 16
+            SUM_PAD  = 14     # gap between rack and table
+            SUM_HDR  = 22     # "Device Summary" title height
+            COL_HDR  = 18     # column header row height
+            TOT_H    = 20     # totals row height
+            n_devs   = len(rack_devices)
+            SUM_H    = SUM_PAD + SUM_HDR + COL_HDR + n_devs * ROW_H + 4 + TOT_H + PAD
 
+            SVG_H = RACK_H + (SUM_H if with_summary else 0)
+
+            _out_w = int(SVG_W * display_scale)
+            _out_h = int(SVG_H * display_scale)
             lines = [
-                f'<svg width="{SVG_W}" height="{SVG_H}" xmlns="http://www.w3.org/2000/svg" '
-                f'style="font-family: Arial, sans-serif; background: #1a1a2e;">',
+                f'<svg width="{_out_w}" height="{_out_h}" viewBox="0 0 {SVG_W} {SVG_H}" '
+                f'xmlns="http://www.w3.org/2000/svg" '
+                f'xmlns:xlink="http://www.w3.org/1999/xlink" '
+                f'style="font-family: Arial, sans-serif; background: {T["page_bg"]};">',
+                # Explicit background rect (cairosvg ignores CSS background property)
+                f'<rect x="0" y="0" width="{SVG_W}" height="{SVG_H}" fill="{T["page_bg"]}"/>',
                 f'<defs><clipPath id="clip{rack_num}"><rect x="{PAD+LABEL_W+BAR_W+1}" '
                 f'y="{PAD+HDR_H}" width="{RK_W-BAR_W-2}" height="{rack_u_height*U_H}"/>'
                 f'</clipPath></defs>',
-                # Rack header
+                # Rack header (spans rack body only, not name column)
                 f'<rect x="{PAD}" y="{PAD}" width="{LABEL_W + RK_W}" height="{HDR_H}" '
-                f'rx="4" fill="#2d2d44"/>',
+                f'rx="4" fill="{T["hdr_fill"]}"/>',
                 f'<text x="{PAD + (LABEL_W + RK_W)//2}" y="{PAD + HDR_H//2 + 5}" '
-                f'text-anchor="middle" fill="white" font-size="12" font-weight="bold">'
+                f'text-anchor="middle" fill="{T["hdr_text"]}" font-size="12" font-weight="bold">'
                 f'Rack {rack_num} — {rack_u_height}U</text>',
                 # Rack body background
                 f'<rect x="{PAD + LABEL_W}" y="{PAD + HDR_H}" width="{RK_W}" '
-                f'height="{rack_u_height * U_H}" fill="#0f0f23" stroke="#444" stroke-width="1"/>',
+                f'height="{rack_u_height * U_H}" fill="{T["body_fill"]}" stroke="{T["body_stroke"]}" stroke-width="2"/>',
             ]
 
             # U position markers and slot dividers
@@ -4333,17 +4623,14 @@ with tab9:
                     y = PAD + HDR_H + (u - 1) * U_H
                 else:
                     y = PAD + HDR_H + (rack_u_height - u) * U_H
-
-                # U label
                 lines.append(
                     f'<text x="{PAD + LABEL_W - 4}" y="{y + U_H//2 + 4}" '
-                    f'text-anchor="end" fill="#666" font-size="9">{u}</text>'
+                    f'text-anchor="end" fill="{T["umark"]}" font-size="9">{u}</text>'
                 )
-                # Slot line
                 if u > 1:
                     lines.append(
                         f'<line x1="{PAD + LABEL_W}" y1="{y}" x2="{PAD + LABEL_W + RK_W}" y2="{y}" '
-                        f'stroke="#222" stroke-width="0.5"/>'
+                        f'stroke="{T["divider"]}" stroke-width="0.5"/>'
                     )
 
             # Draw devices
@@ -4358,49 +4645,250 @@ with tab9:
                 block_h = height_u * U_H - 2
                 color   = d["color"]
 
-                # Slot background — dark grey
                 lines.append(
                     f'<rect x="{PAD + LABEL_W + 2}" y="{y + 1}" '
                     f'width="{RK_W - 4}" height="{block_h}" '
-                    f'rx="2" fill="#1e1e2e" stroke="#333" stroke-width="1"/>'
+                    f'rx="2" fill="{T["slot_fill"]}" stroke="{T["slot_stroke"]}" stroke-width="1"/>'
                 )
-                # Colour bar — left edge for device type identification
                 lines.append(
                     f'<rect x="{PAD + LABEL_W + 2}" y="{y + 1}" '
                     f'width="{BAR_W}" height="{block_h}" '
                     f'rx="2" fill="{color}"/>'
                 )
-                # Device image — fills full slot width
-                _b64 = _get_device_img_b64(d.get("model_key", ""))
+                # Device image — custom upload takes precedence over built-in
+                _b64 = d.get("img_b64") or _get_device_img_b64(d.get("model_key", ""))
                 if _b64 and block_h >= 14:
+                    # Strip white backgrounds for cleaner rendering on both themes
+                    _b64 = _strip_white_bg(_b64)
                     _ih = block_h - 2
                     _iw = RK_W - BAR_W - 2
                     _ix = PAD + LABEL_W + BAR_W + 1
                     _iy = y + 1
+                    # Use both href (SVG 2) and xlink:href (SVG 1.1) for cairosvg compat
                     lines.append(
                         f'<image x="{_ix}" y="{_iy}" '
                         f'width="{_iw}" height="{_ih}" '
                         f'href="data:image/png;base64,{_b64}" '
-                        f'preserveAspectRatio="xMidYMid slice" '
+                        f'xlink:href="data:image/png;base64,{_b64}" '
+                        f'preserveAspectRatio="xMidYMid meet" '
                         f'clip-path="url(#clip{rack_num})"/>'
                     )
+                # Device name in right-hand label column, vertically centred on slot
+                _name_x  = PAD + LABEL_W + RK_W + NAME_GAP
+                _name_y  = y + max(block_h // 2, 1) + 4
+                _fs      = 9 if block_h < 24 else 10
+                lines.append(
+                    f'<text x="{_name_x}" y="{_name_y}" fill="{T["name_text"]}" font-size="{_fs}" '
+                    f'dominant-baseline="auto">{d["name"]}</text>'
+                )
 
+            # ── Outer rack frame (drawn last so it sits over device edges) ──
+            if light_theme:
+                _frame_x = PAD + LABEL_W
+                _frame_y = PAD
+                _frame_w = RK_W
+                _frame_h = HDR_H + rack_u_height * U_H
+                # Header/body separator
+                lines.append(
+                    f'<line x1="{_frame_x}" y1="{PAD + HDR_H}" '
+                    f'x2="{_frame_x + _frame_w}" y2="{PAD + HDR_H}" '
+                    f'stroke="#000" stroke-width="1.5"/>'
+                )
+                # Outer frame
+                lines.append(
+                    f'<rect x="{_frame_x}" y="{_frame_y}" width="{_frame_w}" height="{_frame_h}" '
+                    f'fill="none" stroke="#000" stroke-width="3" rx="2"/>'
+                )
+
+            # ── Summary table (download only) ──────────────────
+            if with_summary and rack_devices:
+                _w_conv  = 1.0 if use_lbs else 0.453592
+                _w_unit  = "lbs" if use_lbs else "kg"
+                _p_div   = 1000.0 if use_kw else 1.0
+                _p_unit  = "kW" if use_kw else "W"
+
+                def _fw(lbs):
+                    v = lbs * _w_conv
+                    return f"{v:.0f} {_w_unit}"
+
+                def _fp(w):
+                    if use_kw:
+                        return f"{w / _p_div:.2f} {_p_unit}"
+                    return f"{int(w)} {_p_unit}"
+
+                ty      = RACK_H + SUM_PAD  # top of summary block
+                x0      = PAD               # left margin
+
+                # Column x positions
+                cx_name = x0
+                cx_u    = x0 + 248
+                cx_w    = x0 + 290
+                cx_ap   = x0 + 360
+                cx_mp   = x0 + 430
+
+                # Section title
+                lines.append(
+                    f'<text x="{x0}" y="{ty + 14}" fill="{T["sum_title"]}" font-size="11" font-weight="bold">'
+                    f'Device Summary — Rack {rack_num}</text>'
+                )
+                ty += SUM_HDR
+
+                # Column headers
+                for cx, label in [(cx_name, "Device"), (cx_u, "U"),
+                                   (cx_w, f"Weight ({_w_unit})"),
+                                   (cx_ap, f"Avg ({_p_unit})"),
+                                   (cx_mp, f"Max ({_p_unit})")]:
+                    lines.append(
+                        f'<text x="{cx}" y="{ty + 12}" fill="{T["sum_hdr"]}" font-size="9" font-weight="bold">'
+                        f'{label}</text>'
+                    )
+                ty += COL_HDR
+                lines.append(
+                    f'<line x1="{x0}" y1="{ty}" x2="{x0 + LABEL_W + RK_W}" y2="{ty}" '
+                    f'stroke="{T["sum_div"]}" stroke-width="0.5"/>'
+                )
+
+                # Device rows
+                tot_u = tot_w = tot_ap = tot_mp = 0
+                for idx, d in enumerate(rack_devices):
+                    row_y    = ty + idx * ROW_H
+                    row_fill = T["row_even"] if idx % 2 == 0 else T["row_odd"]
+                    lines.append(
+                        f'<rect x="{x0}" y="{row_y}" width="{LABEL_W + RK_W}" height="{ROW_H}" '
+                        f'fill="{row_fill}"/>'
+                    )
+                    # colour dot
+                    lines.append(
+                        f'<rect x="{cx_name}" y="{row_y + 5}" width="6" height="6" '
+                        f'rx="1" fill="{d["color"]}"/>'
+                    )
+                    row_data = [
+                        (cx_name + 10, d["name"]),
+                        (cx_u,         str(d["u"])),
+                        (cx_w,         _fw(d["weight"])),
+                        (cx_ap,        _fp(d["avg_w"])),
+                        (cx_mp,        _fp(d["max_w"])),
+                    ]
+                    for rx, rv in row_data:
+                        lines.append(
+                            f'<text x="{rx}" y="{row_y + ROW_H - 4}" fill="{T["row_text"]}" font-size="9">'
+                            f'{rv}</text>'
+                        )
+                    tot_u  += d["u"]
+                    tot_w  += d["weight"]
+                    tot_ap += d["avg_w"]
+                    tot_mp += d["max_w"]
+
+                ty += n_devs * ROW_H + 4
+                lines.append(
+                    f'<line x1="{x0}" y1="{ty}" x2="{x0 + LABEL_W + RK_W}" y2="{ty}" '
+                    f'stroke="{T["sum_div"]}" stroke-width="1"/>'
+                )
+                ty += 2
+
+                # Totals row
+                lines.append(
+                    f'<rect x="{x0}" y="{ty}" width="{LABEL_W + RK_W}" height="{TOT_H}" '
+                    f'fill="{T["tot_fill"]}"/>'
+                )
+                for rx, rv in [
+                    (cx_name + 10, "TOTAL"),
+                    (cx_u,         str(tot_u)),
+                    (cx_w,         _fw(tot_w)),
+                    (cx_ap,        _fp(tot_ap)),
+                    (cx_mp,        _fp(tot_mp)),
+                ]:
+                    lines.append(
+                        f'<text x="{rx}" y="{ty + TOT_H - 5}" fill="{T["tot_text"]}" font-size="9" font-weight="bold">'
+                        f'{rv}</text>'
+                    )
 
             lines.append('</svg>')
             return "\n".join(lines)
 
-        # Render racks
+        # ── Display SVGs (scaled down for on-screen view) ────
+        _DISP_SCALE = 0.62
+        _disp_component_h = int(rack_u * 40 * _DISP_SCALE) + 60
         svg_cols = st.columns(min(num_racks, 3))
         for _ri, _rack_devs in enumerate(rack_groups):
+            _disp_svg = _render_rack(_rack_devs, _ri + 1, rack_u, rack_top_down,
+                                     with_summary=False, display_scale=_DISP_SCALE)
             with svg_cols[_ri % len(svg_cols)]:
-                st.components.v1.html(
-                    _render_rack(_rack_devs, _ri + 1, rack_u, rack_top_down),
-                    height=rack_u * 40 + 100, scrolling=True
+                st.components.v1.html(_disp_svg, height=_disp_component_h, scrolling=False)
+
+        # ── Downloads ─────────────────────────────────────────
+        # PDF/JPG are generated on demand (button click) to avoid
+        # blocking cairosvg conversions on every render.
+        try:
+            import cairosvg as _cairosvg_probe  # noqa: F401
+            _cairosvg_ok = True
+        except ImportError:
+            _cairosvg_ok = False
+
+        _A4_W, _A4_H = 1240, 1754
+
+        st.markdown("#### ⬇️ Downloads")
+        for _ri, _rack_devs in enumerate(rack_groups):
+            _base_fname = f"{pfx or 'rack'}_rack{_ri + 1}_{install_date}"
+            if num_racks > 1:
+                st.caption(f"Rack {_ri + 1}")
+
+            # Download SVG computed here — fast string ops, no cairosvg
+            _dl_svg = _render_rack(_rack_devs, _ri + 1, rack_u, rack_top_down,
+                                   with_summary=True, use_kw=rack_use_kw, use_lbs=rack_use_lbs,
+                                   display_scale=1.0, light_theme=True)
+
+            _dl_c1, _dl_c2, _dl_c3 = st.columns(3)
+
+            with _dl_c1:
+                st.download_button(
+                    "⬇️ SVG",
+                    data=_dl_svg,
+                    file_name=f"{_base_fname}.svg",
+                    mime="image/svg+xml",
+                    key=f"rack_dl_svg_{_ri}",
+                    use_container_width=True,
                 )
+
+            if _cairosvg_ok:
+                _pdf_ss = f"_rack_pdf_{_ri}"
+                _jpg_ss = f"_rack_jpg_{_ri}"
+
+                with _dl_c2:
+                    if _pdf_ss in st.session_state:
+                        st.download_button(
+                            "⬇️ PDF",
+                            data=st.session_state[_pdf_ss],
+                            file_name=f"{_base_fname}.pdf",
+                            mime="application/pdf",
+                            key=f"rack_dl_pdf_{_ri}",
+                            use_container_width=True,
+                        )
+                    else:
+                        if st.button("🔄 Generate PDF", key=f"rack_gen_pdf_{_ri}",
+                                     use_container_width=True):
+                            st.session_state[_pdf_ss] = _svg_to_pdf_cached(_dl_svg, _A4_W, _A4_H)
+                            st.rerun()
+
+                with _dl_c3:
+                    if _jpg_ss in st.session_state:
+                        st.download_button(
+                            "⬇️ JPG",
+                            data=st.session_state[_jpg_ss],
+                            file_name=f"{_base_fname}.jpg",
+                            mime="image/jpeg",
+                            key=f"rack_dl_jpg_{_ri}",
+                            use_container_width=True,
+                        )
+                    else:
+                        if st.button("🔄 Generate JPG", key=f"rack_gen_jpg_{_ri}",
+                                     use_container_width=True):
+                            st.session_state[_jpg_ss] = _svg_to_jpg_cached(_dl_svg, _A4_W, _A4_H)
+                            st.rerun()
 
         # Legend
         st.markdown("---")
-        legend_cols = st.columns(5)
+        _has_custom = bool(st.session_state.get("rack_custom_devices"))
         legend = [
             ("#2563EB", "DBox"),
             ("#16A34A", "CNode"),
@@ -4408,6 +4896,9 @@ with tab9:
             ("#8B5CF6", "GPU Switch"),
             ("#EF4444", "Spine Switch"),
         ]
+        if _has_custom:
+            legend.append(("#6B7280", "Custom"))
+        legend_cols = st.columns(len(legend))
         for i, (color, label) in enumerate(legend):
             with legend_cols[i]:
                 st.markdown(
@@ -4479,9 +4970,128 @@ with tab9:
             else:
                 st.caption("No device images available for current selection.")
 
-# TAB 10 — AI ASSISTANT
+# TAB 10 — DEVICE INVENTORY
 # ============================================================
 with tab10:
+    st.subheader("📦 Device Inventory")
+    st.caption("Build your global product library. Devices saved here are available across all projects and can be added to any rack diagram.")
+    st.markdown("---")
+
+    _dinv_all = _get_inventory_cached()
+    _dinv_cats = ["All"] + (_db.DEVICE_CATEGORIES if _DB_AVAILABLE else [])
+
+    _dinv_left, _dinv_right = st.columns([1, 1])
+
+    with _dinv_left:
+        # ── Browse / manage inventory ────────────────────────
+        st.markdown("### 📚 Product Library")
+
+        _dinv_s_col, _dinv_c_col = st.columns([3, 2])
+        with _dinv_s_col:
+            _dinv_search = st.text_input("Search", key="inv_search",
+                                          placeholder="Filter by name…",
+                                          label_visibility="collapsed")
+        with _dinv_c_col:
+            _dinv_cat_sel = st.selectbox("Category", _dinv_cats, key="inv_cat_sel",
+                                          label_visibility="collapsed")
+
+        _dinv_search = st.session_state.get("inv_search", "")
+        _dinv_filtered = [
+            d for d in _dinv_all
+            if (_dinv_search.lower() in d["product_name"].lower() or not _dinv_search)
+            and (_dinv_cat_sel == "All" or d["category"] == _dinv_cat_sel)
+        ]
+
+        if _dinv_filtered:
+            for _dinv_d in _dinv_filtered:
+                _dil, _dir = st.columns([5, 1])
+                with _dil:
+                    _dinv_v = f" · {_dinv_d['vendor']}" if _dinv_d["vendor"] else ""
+                    _dinv_n = f"  *{_dinv_d['notes']}*" if _dinv_d["notes"] else ""
+                    st.markdown(
+                        f'<p style="font-size:12px;margin:6px 0 0 0">'
+                        f'<b>{_dinv_d["product_name"]}</b>{_dinv_v}<br>'
+                        f'<span style="color:#888">{_dinv_d["category"]} · '
+                        f'{_dinv_d["u_height"]}U · {_dinv_d["weight_lbs"]:.0f} lbs · '
+                        f'{_dinv_d["avg_w"]}W avg / {_dinv_d["max_w"]}W max'
+                        f'{"  📷" if _dinv_d["img_b64"] else ""}'
+                        f'{_dinv_n}</span></p>',
+                        unsafe_allow_html=True,
+                    )
+                with _dir:
+                    if st.button("🗑️", key=f"inv_del_{_dinv_d['id']}",
+                                 help="Delete from inventory permanently"):
+                        _db.delete_inventory_device(_dinv_d["id"])
+                        _inv_cache_invalidate()
+                        st.rerun()
+        elif _dinv_all:
+            st.caption("No products match the filter.")
+        else:
+            st.caption("Inventory is empty — add your first product using the form →")
+
+    with _dinv_right:
+        # ── Add / update product ─────────────────────────────
+        st.markdown("### ➕ Add Product")
+        st.caption("Define the product specs once. Use the Rack Diagram tab to add instances to a rack.")
+
+        _inv_prod    = st.text_input("Product Name *", key="inv_prod",
+                                      placeholder="e.g. APC Smart-UPS 3000")
+        _inv_vendor  = st.text_input("Vendor / Brand", key="inv_vendor",
+                                      placeholder="e.g. APC, Vertiv, Raritan")
+        _inv_cat     = st.selectbox("Category", _db.DEVICE_CATEGORIES if _db else ["Other"],
+                                     key="inv_cat")
+        _inv_notes   = st.text_input("Notes (optional)", key="inv_notes",
+                                      placeholder="e.g. 208V input, phase A")
+
+        _inv_phys1, _inv_phys2 = st.columns(2)
+        with _inv_phys1:
+            _inv_u       = st.number_input("Height (U)", min_value=1, max_value=20, value=2,
+                                            key="inv_u")
+            _inv_avg_w   = st.number_input("Avg Power (W)", min_value=0, value=500, step=10,
+                                            key="inv_avg_w")
+        with _inv_phys2:
+            _inv_weight  = st.number_input("Weight (lbs)", min_value=0.0, value=50.0, step=1.0,
+                                            key="inv_weight_lbs")
+            _inv_max_w   = st.number_input("Max Power (W)", min_value=0, value=800, step=10,
+                                            key="inv_max_w")
+
+        _inv_img = st.file_uploader("Device Image (PNG, max 2 MB)", type=["png"], key="inv_img",
+                                     help="Landscape PNG preferred. Displayed inside the rack slot.")
+
+        _inv_errors = []
+        if not _inv_prod.strip():
+            _inv_errors.append("Product Name is required.")
+        if _inv_img is not None and _inv_img.size > 2 * 1024 * 1024:
+            _inv_errors.append("Image exceeds 2 MB limit.")
+        for _ie in _inv_errors:
+            st.warning(_ie)
+
+        if st.button("Save to Inventory", key="inv_add_btn",
+                     disabled=bool(_inv_errors) or not _inv_prod.strip(),
+                     use_container_width=True):
+            import base64 as _b64mod
+            _inv_img_b64 = ""
+            if _inv_img is not None:
+                _inv_img_b64 = _b64mod.b64encode(_inv_img.read()).decode("utf-8")
+            _db.upsert_inventory_device(
+                product_name=_inv_prod.strip(),
+                vendor=_inv_vendor.strip(),
+                category=_inv_cat,
+                u_height=int(_inv_u),
+                weight_lbs=float(_inv_weight),
+                avg_w=int(_inv_avg_w),
+                max_w=int(_inv_max_w),
+                img_b64=_inv_img_b64,
+                notes=_inv_notes.strip(),
+            )
+            _inv_cache_invalidate()
+            st.success(f'✅ "{_inv_prod.strip()}" saved to inventory.')
+            st.rerun()
+
+
+# TAB 11 — AI ASSISTANT
+# ============================================================
+with tab11:
     st.subheader("🤖 AI Assistant")
     st.caption("Ask questions about your current project in plain English. Runs locally via Ollama — no internet required.")
     st.markdown("---")
