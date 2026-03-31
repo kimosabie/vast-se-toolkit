@@ -169,20 +169,37 @@ Or use the Desktop launcher (see below).
 
 ---
 
-## Step 8 — Set up the Desktop launcher *(optional)*
+## Step 8 — Set up the Desktop launcher and pin to taskbar *(optional but recommended)*
 
-This lets you start the toolkit with a double-click — no terminal needed.
+This lets you start the toolkit with a single click — no terminal needed.
 
-1. Open **File Explorer** → in the address bar type: `\\wsl$\Ubuntu\home\yourname\projects\vast-se-toolkit\`
-   *(replace `yourname` with your Ubuntu username)*
-2. Copy **`Start VAST SE Toolkit.ps1`** to your Windows Desktop
-3. Right-click the file on your Desktop → **Run with PowerShell**
+Windows won't let you pin a `.ps1` script directly to the taskbar, so you create a shortcut that wraps it.
 
-> If Windows blocks the script, open PowerShell as Administrator and run:
-> ```powershell
-> Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-> ```
-> Then try the launcher again.
+### Create the shortcut
+
+1. Right-click an empty spot on your **Desktop** → **New** → **Shortcut**
+2. When asked for the location, paste this exactly — replacing `yourname` with your Ubuntu username:
+   ```
+   powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "\\wsl$\Ubuntu\home\yourname\projects\vast-se-toolkit\Start VAST SE Toolkit.ps1"
+   ```
+3. Click **Next**
+4. Name it `VAST SE Toolkit`, click **Finish**
+
+### Give it a better icon *(optional)*
+
+1. Right-click the new shortcut → **Properties**
+2. Click **Change Icon...**
+3. Browse to `C:\Windows\System32\shell32.dll` and pick any icon you like
+4. Click **OK** → **Apply**
+
+### Pin to the taskbar
+
+1. Right-click the shortcut on your Desktop
+2. Click **Pin to taskbar**
+
+The icon will appear in your taskbar. Click it anytime to start the toolkit and open your browser automatically.
+
+> **First time only:** Windows may show a security warning. Click **Open** or allow the script to run. This only happens once.
 
 ---
 
