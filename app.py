@@ -2100,6 +2100,11 @@ with tab5:
     dnode_st_t3    = int(st.session_state.get("tab7_dnode_start", 1))
     cnode_st_t3    = int(st.session_state.get("tab7_cnode_start", 15))
     isl_short_t3   = st.session_state.get("tab7_isl_short", False)
+    isl_list_t3    = [p.strip() for p in isl_t3.split(",") if p.strip()]
+    isl_cable_t3   = (
+        profile_t3["isl_cable_short"] if isl_short_t3
+        else profile_t3["isl_cable_long"]
+    )
     gpu_enabled_t3 = st.session_state.get("tab8_enabled", False)
     sw_model_t3    = st.session_state.get(
         "tab7_sw_model", list(HARDWARE_PROFILES.keys())[0]
