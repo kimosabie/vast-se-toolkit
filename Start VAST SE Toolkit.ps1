@@ -6,10 +6,6 @@
 
 Add-Type -AssemblyName System.Windows.Forms
 
-# Always run from the directory this script lives in (the repo)
-$repoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $repoDir
-
 # -- Start Docker Desktop if not running ----------------------
 $dockerOK = $false
 try {
@@ -27,17 +23,17 @@ if (-not $dockerOK) {
         Start-Process "Docker Desktop"
     }
 
-    # Wait up to 60 seconds for Docker to become ready
+    # Wait up to 90 seconds for Docker to become ready
     $waited = 0
-    while ($waited -lt 60) {
-        Start-Sleep -Seconds 2
-        $waited += 2
+    while ($waited -lt 90) {
+        Start-Sleep -Seconds 3
+        $waited += 3
         try {
             docker info 2>$null | Out-Null
             $dockerOK = $true
             break
         } catch {}
-        Write-Host "Waiting for Docker Desktop to start... ($waited s)"
+        Write-Host "Waiting for Docker Desktop... ($waited s)"
     }
 
     if (-not $dockerOK) {
@@ -53,19 +49,18 @@ if (-not $dockerOK) {
     Write-Host "Docker Desktop is ready."
 }
 
-# -- Check for updates ----------------------------------------
+# -- All repo operations run inside WSL2 ----------------------
+# Git SSH keys and docker compose live in the Ubuntu environment.
+
+$repoPath = "~/projects/vast-se-toolkit"
+
+# Check for updates
 Write-Host "Checking for updates..."
-$fetchSuccess = $false
-try {
-    git fetch origin main 2>$null
-    $fetchSuccess = $true
-} catch {}
-
-if ($fetchSuccess) {
-    $local  = git rev-parse HEAD 2>$null
-    $remote = git rev-parse origin/main 2>$null
-
-    if ($local -ne $remote) {
+$fetchResult = wsl -d Ubuntu -- bash -c "cd $repoPath && git fetch origin main 2>&1 && echo OK"
+if ($fetchResult -match "OK") {
+    $status = wsl -d Ubuntu -- bash -c "cd $repoPath && git rev-parse HEAD && git rev-parse origin/main"
+    $lines = $status -split "`n" | Where-Object { $_ -match '\S' }
+    if ($lines.Count -ge 2 -and $lines[0].Trim() -ne $lines[1].Trim()) {
         $result = [System.Windows.Forms.MessageBox]::Show(
             "An update is available for VAST SE Toolkit.`n`nUpdate now? This takes about 1-2 minutes.",
             "VAST SE Toolkit Update",
@@ -74,20 +69,20 @@ if ($fetchSuccess) {
         )
         if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
             Write-Host "Pulling latest changes..."
-            git pull origin main
+            wsl -d Ubuntu -- bash -c "cd $repoPath && git pull origin main"
             Write-Host "Rebuilding image..."
-            docker compose up --build -d
+            wsl -d Ubuntu -- bash -c "cd $repoPath && docker compose up --build -d"
             Write-Host "Update complete."
         } else {
-            docker compose up -d
+            wsl -d Ubuntu -- bash -c "cd $repoPath && docker compose up -d"
         }
     } else {
         Write-Host "Already up to date."
-        docker compose up -d
+        wsl -d Ubuntu -- bash -c "cd $repoPath && docker compose up -d"
     }
 } else {
     Write-Host "Could not reach GitHub (offline?). Starting existing version."
-    docker compose up -d
+    wsl -d Ubuntu -- bash -c "cd $repoPath && docker compose up -d"
 }
 
 # -- Wait for app and open browser ----------------------------
@@ -95,7 +90,7 @@ Write-Host "Starting VAST SE Toolkit..."
 $ready = $false
 for ($i = 0; $i -lt 20; $i++) {
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8501/_stcore/health" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        Invoke-WebRequest -Uri "http://localhost:8501/_stcore/health" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop | Out-Null
         $ready = $true
         break
     } catch {}
@@ -103,3 +98,7 @@ for ($i = 0; $i -lt 20; $i++) {
 }
 
 Start-Process "http://localhost:8501"
+
+if (-not $ready) {
+    Write-Host "App may still be starting - opening browser anyway."
+}
