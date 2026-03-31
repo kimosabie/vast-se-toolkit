@@ -353,6 +353,7 @@ DEVICE_IMAGE_MAP = {
     "GEN6 Turin":          "GEN6_Turin_CNode.png",
 }
 
+@st.cache_data(max_entries=30, show_spinner=False)
 def _get_device_img_b64(device_key):
     """Load device image as base64 for SVG embedding. Returns None if unavailable."""
     import base64 as _b64mod, os as _os
@@ -648,6 +649,7 @@ _SKIP_EXACT = {
     "rack_cust_rm",   # prefix match handled below
     "rack_cust_name",  # old key — keep excluded for backward compat
     "rack_pick_add",
+    "rack_pdf_size",   # UI preference, not project data
 }
 _SKIP_PREFIXES = (
     "rack_inv_add_", "rack_inv_del_",
@@ -746,12 +748,13 @@ if "_pending_clear" in st.session_state:
         "proj_nb_mtu", "proj_gpu_servers", "proj_site_notes",
         "proj_ip_notes",
         "tab7_sw_a_ip", "tab7_sw_b_ip", "tab7_gw", "tab7_ntp",
-        "tab7_isl", "tab7_uplink", "tab7_vlan",
+        "tab7_isl", "tab7_uplink",
         "tab8_sw_a_ip", "tab8_sw_b_ip", "tab8_gw", "tab8_ntp",
-        "tab8_isl", "tab8_uplink", "tab8_vlan",
+        "tab8_isl", "tab8_uplink",
     ]
     for _k in _str_defaults:
         st.session_state[_k] = ""
+    st.session_state["tab7_vlan"] = 100  # number_input — must be int, not ""
     _bool_defaults = [
         "proj_phison", "proj_dual_nic", "proj_dbox_ha",
         "proj_encryption", "proj_ip_conflict",
@@ -3042,7 +3045,6 @@ with tab6:
 # ============================================================
 with tab4:
     try:
-        st.write("TAB5 ALIVE")  # ← add this as the very first line
         st.subheader("📄 Confluence Install Plan Generator")
         st.caption(
             "Generates a complete install plan in Confluence-ready markdown. "
@@ -4357,7 +4359,7 @@ with tab9:
             key="rack_max_power_kw"
         )
         rack_max_power  = int(rack_max_power_kw * _power_div)  # always in W internally
-        rack_use_lbs    = st.toggle("Show weight in lbs", value=False, key="rack_use_kg")
+        rack_use_lbs    = st.toggle("Show weight in lbs", value=False, key="rack_use_lbs")
         _weight_unit    = "lbs" if rack_use_lbs else "kg"
         _weight_conv    = 1.0 if rack_use_lbs else 0.453592
         rack_max_weight_disp = st.number_input(
@@ -5183,7 +5185,7 @@ with tab10:
                                       placeholder="e.g. APC Smart-UPS 3000")
         _inv_vendor  = st.text_input("Vendor / Brand", key="inv_vendor",
                                       placeholder="e.g. APC, Vertiv, Raritan")
-        _inv_cat     = st.selectbox("Category", _db.DEVICE_CATEGORIES if _db else ["Other"],
+        _inv_cat     = st.selectbox("Category", _db.DEVICE_CATEGORIES if _DB_AVAILABLE else ["Other"],
                                      key="inv_cat")
         _inv_notes   = st.text_input("Notes (optional)", key="inv_notes",
                                       placeholder="e.g. 208V input, phase A")
@@ -5252,18 +5254,33 @@ with tab11:
         )
     with _ai_c2:
         st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
-        _ollama_ok = False
-        _models    = []
-        try:
-            _chk = requests.get(f"{_ollama_host}/api/tags", timeout=3)
-            if _chk.status_code == 200:
-                _ollama_ok = True
-                _models = [m["name"] for m in _chk.json().get("models", [])]
-        except Exception:
-            pass
+        # Cache probe result keyed on host URL — avoids a 3s blocking call on
+        # every Streamlit rerun when Ollama is not running.
+        _ollama_ck = f"_ollama_ok_{_ollama_host}"
+        if _ollama_ck not in st.session_state:
+            _ollama_ok = False
+            _models    = []
+            try:
+                _chk = requests.get(f"{_ollama_host}/api/tags", timeout=3)
+                if _chk.status_code == 200:
+                    _ollama_ok = True
+                    _models = [m["name"] for m in _chk.json().get("models", [])]
+            except Exception:
+                pass
+            st.session_state[_ollama_ck]          = _ollama_ok
+            st.session_state[f"_ollama_models_{_ollama_host}"] = _models
+        else:
+            _ollama_ok = st.session_state[_ollama_ck]
+            _models    = st.session_state.get(f"_ollama_models_{_ollama_host}", [])
         if _ollama_ok:
+            if st.button("🔄", key="llm_refresh", help="Re-check Ollama connection"):
+                del st.session_state[_ollama_ck]
+                st.rerun()
             st.success("🟢 Connected")
         else:
+            if st.button("🔄", key="llm_refresh", help="Re-check Ollama connection"):
+                del st.session_state[_ollama_ck]
+                st.rerun()
             st.error("🔴 Ollama not found")
 
     if not _ollama_ok:
@@ -5312,7 +5329,7 @@ with tab11:
             _gpu_model  = st.session_state.get("tab8_sw_model",   "Unknown")
             _spine_on   = _topology == "Spine-Leaf"
             _spine_mdl  = st.session_state.get("spine_sw_model",  "Unknown")
-            _vastver    = st.session_state.get("proj_vast_version", "Not set")
+            _vastver    = st.session_state.get("proj_vast_release", "Not set")
             _site_notes = st.session_state.get("proj_site_notes", "None")
             _sfdc       = st.session_state.get("proj_sfdc",       "")
             _ticket     = st.session_state.get("proj_ticket",     "")

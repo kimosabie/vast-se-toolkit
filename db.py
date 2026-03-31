@@ -20,6 +20,8 @@ DB_PATH = Path(os.environ.get("TOOLKIT_DB_PATH", "/app/data/toolkit.db"))
 
 log = logging.getLogger(__name__)
 
+_db_initialized = False
+
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -89,6 +91,9 @@ def _connect() -> sqlite3.Connection:
 
 
 def _init_db():
+    global _db_initialized
+    if _db_initialized:
+        return
     with _connect() as conn:
         # Migration: drop device_inventory if it has old 'name' column instead of 'product_name'
         _has_inv = conn.execute(
@@ -100,6 +105,7 @@ def _init_db():
                 conn.execute("DROP TABLE IF EXISTS device_inventory")
                 conn.execute("DROP INDEX IF EXISTS idx_inv_category")
         conn.executescript(SCHEMA)
+    _db_initialized = True
 
 
 def _now() -> str:
