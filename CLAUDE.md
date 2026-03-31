@@ -121,18 +121,20 @@ print('Done')
 
 ## UI Structure (10 Tabs in app.py)
 
-| Tab | Name | Content |
-|-----|------|---------|
-| 1 | Session | SE identity, SFDC/ticket/Slack links, Save/Load/New Project |
-| 2 | Capacity & Performance Sizer | DBox/CNode hardware selector, performance curves, DRR override, Apply to Project |
-| 3 | Project Details | Cluster inventory, topology, links, hardware dropdowns, versions, site notes, completeness indicator |
-| 4 | Confluence Install Plan | Auto-generated full install plan in markdown |
-| 5 | Validation & Pre-Flight | Port count validation, LLDP script, pre-flight checklist, cable labels |
-| 6 | Installation Procedure | Per-switch steps with real hostnames/IPs/filenames |
-| 7 | Internal Switch — Southbound | Cumulus NV + Arista EOS config generation, port mapping, cable guide |
-| 8 | Data Switch — Northbound | GPU/data network switch config (optional, toggle-enabled) |
-| 9 | Rack Diagram | Visual rack diagram with device images, power/weight analysis, multi-rack support |
-| 10 | Coming Soon | Feature roadmap |
+| Position | Variable | Name | Content |
+|----------|----------|------|---------|
+| 1 | tab1 | Session | SE identity, SFDC/ticket/Slack links, Save/Load/New Project |
+| 2 | tab2 | Capacity & Performance Sizer | DBox/CNode hardware selector, performance curves, DRR override, Apply to Project |
+| 3 | tab3 | Project Details | Cluster inventory, topology, links, hardware dropdowns, versions, site notes, completeness indicator |
+| 4 | tab7 | Internal Switch — Southbound | Cumulus NV + Arista EOS config generation, port mapping, cable guide |
+| 5 | tab8 | Data Switch — Northbound | GPU/data network switch config (optional, toggle-enabled) |
+| 6 | tab9 | Rack Diagram | Visual rack diagram, power/weight analysis, PDF/JPG export (A4/A3 landscape) |
+| 7 | tab10 | Device Inventory | Custom device library for rack diagram |
+| 8 | tab11 | AI Assistant | Local LLM (Ollama) config reviewer and troubleshooting |
+| 9 | tab5 | Pre-Flight, Validation & Installation | Equipment checklist, port count, cable labels, LLDP script, pre-flight checklist, per-switch installation procedure (§1–§12) |
+| 10 | tab4 | Confluence Install Plan | Auto-generated full install plan in markdown |
+
+**Important — variable names vs positions:** Tab variable names (`tab1`–`tab11`, with `tab6` retired after the merge) do **not** match their UI position numbers. The `st.tabs()` unpacking at line ~911 assigns positions. When adding code to a tab, use `with tabX:` where X is the variable from the table above, not the position number.
 
 ## Key Functions in app.py
 
@@ -217,10 +219,10 @@ install_date = st.session_state.get("install_date", str(date.today()))
 | `proj_dual_nic` | Tab 3 | Dual NIC toggle — drives Tab 7 uplink logic |
 | `proj_topology` | Tab 3 | "Leaf Pair" or "Spine-Leaf" |
 | `sizer_*` | Tab 2 | Sizer inputs |
-| `tab7_*` | Tab 7 | Internal switch config inputs |
-| `tab8_*` | Tab 8 | GPU/data switch config inputs |
-| `spine_*` | Tab 7 | Spine switch inputs |
-| `rack_*` | Tab 9 | Rack diagram inputs |
+| `tab7_*` | tab7 (position 4) | Internal switch config inputs |
+| `tab8_*` | tab8 (position 5) | GPU/data switch config inputs |
+| `spine_*` | tab7 (position 4) | Spine switch inputs |
+| `rack_*` | tab9 (position 6) | Rack diagram inputs |
 | `_db_project_id` | internal | Current project ID in SQLite |
 | `_save_milestone` | Tab 1 | Selected milestone label |
 | `_pending_load` | internal | Staged state for next render |
