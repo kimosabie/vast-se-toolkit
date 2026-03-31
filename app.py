@@ -908,18 +908,17 @@ if _hdr_se and _hdr_cust:
 # ============================================================
 # TABS
 # ============================================================
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
+tab1, tab2, tab3, tab7, tab8, tab9, tab10, tab11, tab5, tab4 = st.tabs([
     "🧑‍💻 Session",
     "📏 Capacity & Performance Sizer",
     "📋 Project Details",
-    "📄 Confluence Install Plan",
-    "✅ Validation & Pre-Flight",
-    "📋 Installation Procedure",
     "🔌 Internal Switch — Southbound",
     "🖥️ Data Switch — Northbound",
     "📐 Rack Diagram",
     "📦 Device Inventory",
-    "🤖 AI Assistant"
+    "🤖 AI Assistant",
+    "✅ Pre-Flight, Validation & Installation",
+    "📄 Confluence Install Plan",
 ])
 #=============================================================
 # ============================================================
@@ -2083,10 +2082,9 @@ For questions contact your VAST SE: {se_name or "—"}
 # TAB 5 — VALIDATION & PRE-FLIGHT
 # ============================================================
 with tab5:
-    st.subheader("Validation & Pre-Flight Checks")
+    st.subheader("Pre-Flight, Validation & Installation")
     st.caption(
-        "Run through all checks below before starting the VAST bootstrap. "
-        "Every item must be green before you proceed."
+        "Run through each section in order. Complete all pre-flight checks before starting switch configuration."
     )
 
     # Grab state from other tabs
@@ -2110,473 +2108,41 @@ with tab5:
     sw_a_ip_only = sw_a_t3.split("/")[0]
     sw_b_ip_only = sw_b_t3.split("/")[0]
 
-    # ── Section 1: Port Count Validation ────────────────────
+
+    proc_gpu_sw_a   = st.session_state.get("tab8_sw_a_ip", "192.168.2.1/24")
+    proc_gpu_sw_b   = st.session_state.get("tab8_sw_b_ip", "192.168.2.2/24")
+
+    # Build filenames matching what the toolkit generates
+    today_str       = date.today().isoformat()
+    vendor_up       = profile_t3["vendor"].upper()
+    fname_sw_a      = f"{pfx}_VAST_SWA_{vendor_up}_{today_str}.txt"
+    fname_sw_b      = f"{pfx}_VAST_SWB_{vendor_up}_{today_str}.txt"
+
+    proc_gpu_model  = st.session_state.get(
+        "tab8_sw_model", list(HARDWARE_PROFILES.keys())[0]
+    )
+    proc_gpu_profile = HARDWARE_PROFILES[proc_gpu_model]
+    gpu_vendor_up   = proc_gpu_profile["vendor"].upper()
+    fname_gpu_sw_a  = f"{pfx}_VAST_GPU_SWA_{gpu_vendor_up}_{today_str}.txt"
+    fname_gpu_sw_b  = f"{pfx}_VAST_GPU_SWB_{gpu_vendor_up}_{today_str}.txt"
+
+    spine_enabled   = topology == "Spine-Leaf"
+    proc_spine_model = st.session_state.get(
+        "spine_sw_model", list(HARDWARE_PROFILES.keys())[0]
+    )
+    proc_spine_profile = HARDWARE_PROFILES[proc_spine_model]
+    spine_vendor_up = proc_spine_profile["vendor"].upper()
+    fname_spine_a   = f"{pfx}_VAST_SPINE_A_{spine_vendor_up}_{today_str}.txt"
+    fname_spine_b   = f"{pfx}_VAST_SPINE_B_{spine_vendor_up}_{today_str}.txt"
+
+    proc_spine_a_ip = st.session_state.get("spine_a_ip", "192.168.3.1/24")
+    proc_spine_b_ip = st.session_state.get("spine_b_ip", "192.168.3.2/24")
+
+    TEMP_IP = "192.168.2.101/24"
+
+    # ── Section 1: Equipment Checklist ──────────────────────
     st.markdown("---")
-    st.markdown("### 1️⃣ Port Count Validation")
-
-    errors_t3, warnings_t3 = validate_port_counts(
-        num_dboxes, num_cnodes,
-        dnode_st_t3, cnode_st_t3, profile_t3
-    )
-
-    if errors_t3:
-        for e in errors_t3:
-            st.error(e)
-    elif warnings_t3:
-        for w in warnings_t3:
-            st.warning(w)
-    else:
-        total_ports_used = (num_dboxes * 2) + num_cnodes
-        st.success(
-            f"✅ Port allocation valid — "
-            f"Using {total_ports_used} of "
-            f"{profile_t3['max_node_ports']} available node ports "
-            f"on {sw_model_t3}."
-        )
-
-    dnode_end    = dnode_st_t3 + (num_dboxes * 2) - 1
-    cnode_end    = cnode_st_t3 + num_cnodes - 1
-    isl_ports_t3 = [p.strip() for p in isl_t3.split(",") if p.strip()]
-    isl_range    = (
-        f"{isl_ports_t3[0]}–{isl_ports_t3[-1]}"
-        if isl_ports_t3 else "—"
-    )
-
-    st.table([
-        {
-            "Range":        f"swp{dnode_st_t3}–swp{dnode_end}",
-            "Reserved For": "DNodes (BF-3)",
-            "Count":         num_dboxes * 2,
-            "Status":        "✅ OK" if not errors_t3 else "❌ Error"
-        },
-        {
-            "Range":        f"swp{cnode_st_t3}–swp{cnode_end}",
-            "Reserved For": "CNodes (CX7)",
-            "Count":         num_cnodes,
-            "Status":        "✅ OK" if not errors_t3 else "❌ Error"
-        },
-        {
-            "Range":        isl_range,
-            "Reserved For": "ISL / Peerlink",
-            "Count":         len(isl_ports_t3),
-            "Status":        "✅ OK"
-        },
-    ])
-
-    # ── Section 2: Cable Pre-Check ───────────────────────────
-    st.markdown("---")
-    st.markdown("### 2️⃣ Cable Pre-Check")
-
-    if profile_t3["customer_cables"]:
-        st.error(
-            f"⚠️ **{sw_model_t3} requires customer-supplied 400G cables.** "
-            "Confirm all cables are on-site before proceeding."
-        )
-    else:
-        st.success(
-            f"✅ All cables for {sw_model_t3} are included "
-            "in the VAST shipment."
-        )
-
-    isl_cable_t3 = (
-        profile_t3["isl_cable_short"] if isl_short_t3
-        else profile_t3["isl_cable_long"]
-    )
-
-    st.table([
-        {
-            "Connection":   "DNode (BF-3) → Switch",
-            "Cable":        profile_t3["node_cable"]["spec"],
-            "Supplied By":  profile_t3["node_cable"]["supplier"],
-            "Confirmed ✓":  "☐"
-        },
-        {
-            "Connection":   "CNode (CX7) → Switch",
-            "Cable":        profile_t3["node_cable"]["spec"],
-            "Supplied By":  profile_t3["node_cable"]["supplier"],
-            "Confirmed ✓":  "☐"
-        },
-        {
-            "Connection":   f"ISL / Peerlink ({'≤1m' if isl_short_t3 else '>1m'})",
-            "Cable":        isl_cable_t3["spec"],
-            "Supplied By":  isl_cable_t3["supplier"],
-            "Confirmed ✓":  "☐"
-        },
-        {
-            "Connection":   "Spine / Uplink",
-            "Cable":        profile_t3["spine_cable"]["spec"],
-            "Supplied By":  profile_t3["spine_cable"]["supplier"],
-            "Confirmed ✓":  "☐"
-        },
-    ])
-
-    # ── Section 3: MGMT & NTP Check ─────────────────────────
-    st.markdown("---")
-    st.markdown("### 3️⃣ Management & NTP Pre-Check")
-
-    if not ntp_t3:
-        st.error(
-            "❌ NTP Server not set in Tab 1. "
-            "Set the NTP server before running bootstrap."
-        )
-    else:
-        st.success(f"✅ NTP Server configured: {ntp_t3}")
-
-    st.table([
-        {
-            "Check":  "Switch A MGMT IP reachable",
-            "Value":  sw_a_ip_only,
-            "Action": f"ping {sw_a_ip_only}"
-        },
-        {
-            "Check":  "Switch B MGMT IP reachable",
-            "Value":  sw_b_ip_only,
-            "Action": f"ping {sw_b_ip_only}"
-        },
-        {
-            "Check":  "MGMT Gateway reachable",
-            "Value":  st.session_state.get("tab7_gw", "—"),
-            "Action": f"ping {st.session_state.get('tab7_gw', '—')}"
-        },
-        {
-            "Check":  "NTP Server reachable",
-            "Value":  ntp_t3 or "NOT SET",
-            "Action": f"ping {ntp_t3}" if ntp_t3 else "❌ Set NTP first"
-        },
-    ])
-
-    # ── Section 4: LLDP Validation Script ───────────────────
-    st.markdown("---")
-    st.markdown("### 4️⃣ Post-Cabling LLDP Validation Script")
-    st.caption(
-        "Paste this into both switch CLIs after cabling is complete. "
-        "Every expected node must appear before starting bootstrap."
-    )
-
-    expected_neighbors = []
-    for i in range(1, num_dboxes + 1):
-        for d in range(1, 3):
-            expected_neighbors.append(
-                f"{pfx}-{dbox_label}-{i}-{dnode_label}-{d}"
-            )
-    for i in range(1, num_cnodes + 1):
-        expected_neighbors.append(f"{pfx}-{cnode_label}-{i}")
-
-    neighbor_grep = "|".join(expected_neighbors)
-
-    cumulus_lldp = f"""#!/bin/bash
-# VAST SE Toolkit — LLDP Validation Script
-# Cluster: {cluster_name or "—"}  |  SE: {se_name or "—"}
-# Run on BOTH Switch A ({sw_a_ip_only}) and Switch B ({sw_b_ip_only})
-# ============================================================
-
-echo "=== LLDP NEIGHBOR CHECK ==="
-echo "Expected nodes: {len(expected_neighbors)}"
-echo ""
-nv show interface lldp
-
-echo ""
-echo "=== FILTERING FOR VAST NODES ==="
-nv show interface lldp | grep -E "{neighbor_grep}"
-
-echo ""
-echo "=== MLAG STATUS ==="
-nv show mlag
-
-echo ""
-echo "=== PEERLINK STATUS ==="
-nv show interface peerlink
-
-echo ""
-echo "=== BRIDGE VLAN STATUS ==="
-nv show bridge domain br_default vlan
-
-echo ""
-echo "=== MTU VERIFICATION (expect {profile_t3['mtu']}) ==="
-nv show interface | grep -E "swp[1-9]|mtu"
-
-echo ""
-echo "=== QoS PFC STATUS ==="
-nv show qos roce
-
-echo ""
-echo "Expected {len(expected_neighbors)} VAST nodes:"
-echo "{chr(10).join(f'  - {n}' for n in expected_neighbors)}"
-"""
-
-    arista_lldp = f"""#!/bin/bash
-# VAST SE Toolkit — LLDP Validation Script (Arista EOS)
-# Cluster: {cluster_name or "—"}  |  SE: {se_name or "—"}
-# Run on BOTH Switch A ({sw_a_ip_only}) and Switch B ({sw_b_ip_only})
-# ============================================================
-
-echo "=== LLDP NEIGHBOR CHECK ==="
-show lldp neighbors
-
-echo ""
-echo "=== FILTERING FOR VAST NODES ==="
-show lldp neighbors | grep -E "{neighbor_grep}"
-
-echo ""
-echo "=== MLAG STATUS ==="
-show mlag
-
-echo ""
-echo "=== PORT-CHANNEL SUMMARY ==="
-show port-channel summary
-
-echo ""
-echo "=== VLAN STATUS ==="
-show vlan
-
-echo ""
-echo "=== MTU VERIFICATION (expect {profile_t3['mtu']}) ==="
-show interfaces | grep -E "Ethernet|MTU"
-
-echo ""
-echo "=== QoS PFC STATUS ==="
-show priority-flow-control
-show qos
-
-echo ""
-echo "Expected {len(expected_neighbors)} VAST nodes:"
-echo "{chr(10).join(f'  - {n}' for n in expected_neighbors)}"
-"""
-
-    lldp_script = (
-        cumulus_lldp if profile_t3["os"] == "cumulus"
-        else arista_lldp
-    )
-
-    st.code(lldp_script, language="bash")
-    st.download_button(
-        label="💾 Download LLDP Validation Script",
-        data=lldp_script,
-        file_name=(
-            f"{pfx}_LLDP_Validation_"
-            f"{date.today().isoformat()}.sh"
-        ),
-        mime="text/plain",
-        key="tab3_lldp_dl"
-    )
-
-    # ── Section 5: Pre-Flight Checklist ─────────────────────
-    st.markdown("---")
-    st.markdown("### 5️⃣ Pre-Flight Checklist")
-    st.caption(
-        "Work through this checklist top to bottom. "
-        "Do not start VAST bootstrap until all items are confirmed."
-    )
-
-    checklist = f"""
-VAST INSTALLATION PRE-FLIGHT CHECKLIST
-=======================================
-Cluster:  {pfx}
-Customer: {customer or "—"}
-SE:       {se_name or "—"}
-Date:     {install_date}
-Switch:   {sw_model_t3}
-Topology: {topology}
-Generated by: VAST SE Toolkit v1.0.0
-
-PHYSICAL
---------
-☐  All DBoxes racked and powered on
-☐  All CNodes racked and powered on
-☐  All switches racked and powered on
-☐  {"⚠️  400G customer-supplied cables on-site and verified" if profile_t3["customer_cables"] else "VAST-supplied cables verified against packing list"}
-☐  DNode (BF-3) cables run: {profile_t3["node_cable"]["spec"]}
-☐  CNode (CX7)  cables run: {profile_t3["node_cable"]["spec"]}
-☐  ISL cables run:          {isl_cable_t3["spec"]}
-☐  Uplink cables run:       {profile_t3["spine_cable"]["spec"]}
-
-NETWORK — SWITCH A ({sw_a_ip_only})
-{"─" * 40}
-☐  Switch A powered on and booted
-☐  Switch A MGMT IP configured: {sw_a_ip_only}
-☐  Switch A config applied (downloaded from Tab 1)
-☐  Switch A MLAG primary (priority 1000)
-☐  Switch A NTP synced to: {ntp_t3 or "NOT SET — SET BEFORE PROCEEDING"}
-
-NETWORK — SWITCH B ({sw_b_ip_only})
-{"─" * 40}
-☐  Switch B powered on and booted
-☐  Switch B MGMT IP configured: {sw_b_ip_only}
-☐  Switch B config applied (downloaded from Tab 1)
-☐  Switch B MLAG secondary (priority 2000)
-☐  Switch B NTP synced to: {ntp_t3 or "NOT SET — SET BEFORE PROCEEDING"}
-
-{"SPINE SWITCHES" if topology == "Spine-Leaf" else ""}
-{"─" * 40 if topology == "Spine-Leaf" else ""}
-{"☐  Spine A config applied (downloaded from Tab 1)" if topology == "Spine-Leaf" else ""}
-{"☐  Spine B config applied (downloaded from Tab 1)" if topology == "Spine-Leaf" else ""}
-{"☐  Spine MLAG peerlink UP on both spine switches" if topology == "Spine-Leaf" else ""}
-{"☐  Leaf-to-Spine uplinks confirmed UP" if topology == "Spine-Leaf" else ""}
-
-VALIDATION
-----------
-☐  MLAG peerlink UP on both switches
-☐  MLAG state MASTER/BACKUP (not SOLO)
-☐  LLDP validation script run — all {len(expected_neighbors)} nodes visible
-☐  MTU confirmed {profile_t3["mtu"]} on all node ports
-☐  PFC / RoCEv2 QoS confirmed active
-☐  Customer uplink LACP bond UP (if applicable)
-☐  Ping Switch A MGMT: ping {sw_a_ip_only}
-☐  Ping Switch B MGMT: ping {sw_b_ip_only}
-
-{"GPU / DATA NETWORK SWITCH" if gpu_enabled_t3 else ""}
-{"─" * 40 if gpu_enabled_t3 else ""}
-{"☐  GPU Switch A config applied (downloaded from Tab 2)" if gpu_enabled_t3 else ""}
-{"☐  GPU Switch B config applied (downloaded from Tab 2)" if gpu_enabled_t3 else ""}
-{"☐  Customer handoff document delivered to network team" if gpu_enabled_t3 else ""}
-{"☐  GPU switch uplink LACP bond confirmed UP" if gpu_enabled_t3 else ""}
-
-READY FOR BOOTSTRAP
--------------------
-☐  All above items confirmed
-☐  VAST bootstrap bundle available on laptop
-☐  Customer sign-off on network readiness obtained
-☐  SE confirms: GO FOR BOOTSTRAP ✅
-================================================
-"""
-
-    st.code(checklist, language="text")
-    st.download_button(
-        label="📋 Download Pre-Flight Checklist",
-        data=checklist,
-        file_name=(
-            f"{pfx}_PreFlight_Checklist_"
-            f"{date.today().isoformat()}.txt"
-        ),
-        mime="text/plain",
-        key="tab3_checklist_dl"
-    )
-
-    # ── Section 6: Cable Label Generator ────────────────────
-    st.markdown("---")
-    st.markdown("### 6️⃣ Cable Label Generator")
-    st.caption(
-        "Format: SOURCE-SWITCH-PORT : TARGET-NODE-PORT  |  "
-        "Download CSV for label printers or plain text for printing."
-    )
-
-    tab3_map = get_port_mappings(
-        "A", num_dboxes, num_cnodes,
-        dnode_st_t3, cnode_st_t3,
-        pfx=pfx, dbox_label=dbox_label,
-        dnode_label=dnode_label, cnode_label=cnode_label
-    )
-
-    isl_list_t3   = [p.strip() for p in isl_t3.split(",") if p.strip()]
-    label_rows    = []
-    csv_rows      = []
-    cable_number  = 1
-
-    for item in tab3_map:
-        port_num   = item["port"]
-        sw_a_port  = f"{full_sw_a}-P{port_num}"
-        sw_b_port  = f"{full_sw_b}-P{port_num}"
-        node_end_a = item["desc"].replace("-P2", "-P1")
-        node_end_b = item["desc"].replace("-P1", "-P2")
-        cable_spec = profile_t3["node_cable"]["spec"]
-        supplier   = profile_t3["node_cable"]["supplier"]
-
-        label_rows.append({
-            "Cable #":    f"CBL-{cable_number:03d}",
-            "Switch End": sw_a_port,
-            "Node End":   node_end_a,
-            "Cable Type": cable_spec,
-            "Supplier":   supplier,
-        })
-        csv_rows.append(
-            f"CBL-{cable_number:03d},{sw_a_port},{node_end_a},"
-            f"{cable_spec},{supplier}"
-        )
-        cable_number += 1
-
-        label_rows.append({
-            "Cable #":    f"CBL-{cable_number:03d}",
-            "Switch End": sw_b_port,
-            "Node End":   node_end_b,
-            "Cable Type": cable_spec,
-            "Supplier":   supplier,
-        })
-        csv_rows.append(
-            f"CBL-{cable_number:03d},{sw_b_port},{node_end_b},"
-            f"{cable_spec},{supplier}"
-        )
-        cable_number += 1
-
-    for p in isl_list_t3:
-        port_num     = p.replace("swp", "")
-        isl_spec     = (
-            profile_t3["isl_cable_short"]["spec"] if isl_short_t3
-            else profile_t3["isl_cable_long"]["spec"]
-        )
-        isl_supplier = (
-            profile_t3["isl_cable_short"]["supplier"] if isl_short_t3
-            else profile_t3["isl_cable_long"]["supplier"]
-        )
-        label_rows.append({
-            "Cable #":    f"CBL-{cable_number:03d}",
-            "Switch End": f"{full_sw_a}-ISL-{p}",
-            "Node End":   f"{full_sw_b}-ISL-{p}",
-            "Cable Type": isl_spec,
-            "Supplier":   isl_supplier,
-        })
-        csv_rows.append(
-            f"CBL-{cable_number:03d},"
-            f"{full_sw_a}-ISL-{p},"
-            f"{full_sw_b}-ISL-{p},"
-            f"{isl_spec},{isl_supplier}"
-        )
-        cable_number += 1
-
-    st.dataframe(label_rows, use_container_width=True)
-
-    plain_labels = (
-        f"VAST CABLE LABELS\n"
-        f"Cluster: {pfx}  |  SE: {se_name or '—'}  |  "
-        f"Date: {install_date}\n"
-        f"{'='*65}\n\n"
-    )
-    for row in label_rows:
-        plain_labels += (
-            f"[{row['Cable #']}]\n"
-            f"  FROM: {row['Switch End']}\n"
-            f"  TO:   {row['Node End']}\n"
-            f"  TYPE: {row['Cable Type']}  |  "
-            f"SUPPLIER: {row['Supplier']}\n\n"
-        )
-
-    csv_header = "Cable #,Switch End,Node End,Cable Type,Supplier"
-    csv_output = csv_header + "\n" + "\n".join(csv_rows)
-
-    dl_col1, dl_col2 = st.columns(2)
-    with dl_col1:
-        st.download_button(
-            label="💾 Download Cable Labels (CSV)",
-            data=csv_output,
-            file_name=(
-                f"{pfx}_Cable_Labels_{date.today().isoformat()}.csv"
-            ),
-            mime="text/csv",
-            key="tab3_labels_csv"
-        )
-    with dl_col2:
-        st.download_button(
-            label="🖨️ Download Cable Labels (Print)",
-            data=plain_labels,
-            file_name=(
-                f"{pfx}_Cable_Labels_{date.today().isoformat()}.txt"
-            ),
-            mime="text/plain",
-            key="tab3_labels_txt"
-        )
-
-    # ── Section 7: Equipment Checklist ──────────────────────
-    st.markdown("---")
-    st.markdown("### 7️⃣ Equipment Checklist")
+    st.markdown("### 1️⃣ Equipment Checklist")
     st.caption(
         "Quantities generated from session inputs. "
         "Add custom items at the bottom."
@@ -2711,60 +2277,473 @@ Generated by: VAST SE Toolkit v1.0.0
         mime="text/plain",
         key="tab3_equip_dl"
     )
-# ============================================================
-# TAB 6 — INSTALLATION PROCEDURE
-# ============================================================
-with tab6:
-    st.subheader("Switch Installation Procedure")
-    st.caption(
-        "Step-by-step procedure personalised for this session. "
-        "Work through each section in order. "
-        "Do not start VAST bootstrap until all switches are validated."
-    )
-
-    # Pull session state
-    proc_sw_model   = st.session_state.get(
-        "tab7_sw_model", list(HARDWARE_PROFILES.keys())[0]
-    )
-    proc_profile    = HARDWARE_PROFILES[proc_sw_model]
-    proc_sw_a_ip    = st.session_state.get("tab7_sw_a_ip", "192.168.1.1/24")
-    proc_sw_b_ip    = st.session_state.get("tab7_sw_b_ip", "192.168.1.2/24")
-    proc_ntp        = st.session_state.get("tab7_ntp", "")
-    proc_gpu        = st.session_state.get("tab8_enabled", False)
-    proc_gpu_sw_a   = st.session_state.get("tab8_sw_a_ip", "192.168.2.1/24")
-    proc_gpu_sw_b   = st.session_state.get("tab8_sw_b_ip", "192.168.2.2/24")
-
-    # Build filenames matching what the toolkit generates
-    today_str       = date.today().isoformat()
-    vendor_up       = proc_profile["vendor"].upper()
-    fname_sw_a      = f"{pfx}_VAST_SWA_{vendor_up}_{today_str}.txt"
-    fname_sw_b      = f"{pfx}_VAST_SWB_{vendor_up}_{today_str}.txt"
-
-    proc_gpu_model  = st.session_state.get(
-        "tab8_sw_model", list(HARDWARE_PROFILES.keys())[0]
-    )
-    proc_gpu_profile = HARDWARE_PROFILES[proc_gpu_model]
-    gpu_vendor_up   = proc_gpu_profile["vendor"].upper()
-    fname_gpu_sw_a  = f"{pfx}_VAST_GPU_SWA_{gpu_vendor_up}_{today_str}.txt"
-    fname_gpu_sw_b  = f"{pfx}_VAST_GPU_SWB_{gpu_vendor_up}_{today_str}.txt"
-
-    spine_enabled   = topology == "Spine-Leaf"
-    proc_spine_model = st.session_state.get(
-        "spine_sw_model", list(HARDWARE_PROFILES.keys())[0]
-    )
-    proc_spine_profile = HARDWARE_PROFILES[proc_spine_model]
-    spine_vendor_up = proc_spine_profile["vendor"].upper()
-    fname_spine_a   = f"{pfx}_VAST_SPINE_A_{spine_vendor_up}_{today_str}.txt"
-    fname_spine_b   = f"{pfx}_VAST_SPINE_B_{spine_vendor_up}_{today_str}.txt"
-
-    proc_spine_a_ip = st.session_state.get("spine_a_ip", "192.168.3.1/24")
-    proc_spine_b_ip = st.session_state.get("spine_b_ip", "192.168.3.2/24")
-
-    TEMP_IP = "192.168.2.101/24"
-
-    # ── Section 1: Prerequisites ─────────────────────────────
+    # ── Section 2: Port Count Validation ────────────────────
     st.markdown("---")
-    st.markdown("### 1️⃣ Prerequisites")
+    st.markdown("### 2️⃣ Port Count Validation")
+
+    errors_t3, warnings_t3 = validate_port_counts(
+        num_dboxes, num_cnodes,
+        dnode_st_t3, cnode_st_t3, profile_t3
+    )
+
+    if errors_t3:
+        for e in errors_t3:
+            st.error(e)
+    elif warnings_t3:
+        for w in warnings_t3:
+            st.warning(w)
+    else:
+        total_ports_used = (num_dboxes * 2) + num_cnodes
+        st.success(
+            f"✅ Port allocation valid — "
+            f"Using {total_ports_used} of "
+            f"{profile_t3['max_node_ports']} available node ports "
+            f"on {sw_model_t3}."
+        )
+
+    dnode_end    = dnode_st_t3 + (num_dboxes * 2) - 1
+    cnode_end    = cnode_st_t3 + num_cnodes - 1
+    isl_ports_t3 = [p.strip() for p in isl_t3.split(",") if p.strip()]
+    isl_range    = (
+        f"{isl_ports_t3[0]}–{isl_ports_t3[-1]}"
+        if isl_ports_t3 else "—"
+    )
+
+    st.table([
+        {
+            "Range":        f"swp{dnode_st_t3}–swp{dnode_end}",
+            "Reserved For": "DNodes (BF-3)",
+            "Count":         num_dboxes * 2,
+            "Status":        "✅ OK" if not errors_t3 else "❌ Error"
+        },
+        {
+            "Range":        f"swp{cnode_st_t3}–swp{cnode_end}",
+            "Reserved For": "CNodes (CX7)",
+            "Count":         num_cnodes,
+            "Status":        "✅ OK" if not errors_t3 else "❌ Error"
+        },
+        {
+            "Range":        isl_range,
+            "Reserved For": "ISL / Peerlink",
+            "Count":         len(isl_ports_t3),
+            "Status":        "✅ OK"
+        },
+    ])
+
+    # ── Section 3: Cable Pre-Check ───────────────────────────
+    st.markdown("---")
+    st.markdown("### 3️⃣ Cable Pre-Check")
+
+    if profile_t3["customer_cables"]:
+        st.error(
+            f"⚠️ **{sw_model_t3} requires customer-supplied 400G cables.** "
+            "Confirm all cables are on-site before proceeding."
+        )
+    else:
+        st.success(
+            f"✅ All cables for {sw_model_t3} are included "
+            "in the VAST shipment."
+        )
+
+    isl_cable_t3 = (
+        profile_t3["isl_cable_short"] if isl_short_t3
+        else profile_t3["isl_cable_long"]
+    )
+
+    st.table([
+        {
+            "Connection":   "DNode (BF-3) → Switch",
+            "Cable":        profile_t3["node_cable"]["spec"],
+            "Supplied By":  profile_t3["node_cable"]["supplier"],
+            "Confirmed ✓":  "☐"
+        },
+        {
+            "Connection":   "CNode (CX7) → Switch",
+            "Cable":        profile_t3["node_cable"]["spec"],
+            "Supplied By":  profile_t3["node_cable"]["supplier"],
+            "Confirmed ✓":  "☐"
+        },
+        {
+            "Connection":   f"ISL / Peerlink ({'≤1m' if isl_short_t3 else '>1m'})",
+            "Cable":        isl_cable_t3["spec"],
+            "Supplied By":  isl_cable_t3["supplier"],
+            "Confirmed ✓":  "☐"
+        },
+        {
+            "Connection":   "Spine / Uplink",
+            "Cable":        profile_t3["spine_cable"]["spec"],
+            "Supplied By":  profile_t3["spine_cable"]["supplier"],
+            "Confirmed ✓":  "☐"
+        },
+    ])
+
+    # ── Section 4: Cable Label Generator ────────────────────
+    st.markdown("---")
+    st.markdown("### 4️⃣ Cable Label Generator")
+    st.caption(
+        "Format: SOURCE-SWITCH-PORT : TARGET-NODE-PORT  |  "
+        "Download CSV for label printers or plain text for printing."
+    )
+
+    tab3_map = get_port_mappings(
+        "A", num_dboxes, num_cnodes,
+        dnode_st_t3, cnode_st_t3,
+        pfx=pfx, dbox_label=dbox_label,
+        dnode_label=dnode_label, cnode_label=cnode_label
+    )
+
+    isl_list_t3   = [p.strip() for p in isl_t3.split(",") if p.strip()]
+    label_rows    = []
+    csv_rows      = []
+    cable_number  = 1
+
+    for item in tab3_map:
+        port_num   = item["port"]
+        sw_a_port  = f"{full_sw_a}-P{port_num}"
+        sw_b_port  = f"{full_sw_b}-P{port_num}"
+        node_end_a = item["desc"].replace("-P2", "-P1")
+        node_end_b = item["desc"].replace("-P1", "-P2")
+        cable_spec = profile_t3["node_cable"]["spec"]
+        supplier   = profile_t3["node_cable"]["supplier"]
+
+        label_rows.append({
+            "Cable #":    f"CBL-{cable_number:03d}",
+            "Switch End": sw_a_port,
+            "Node End":   node_end_a,
+            "Cable Type": cable_spec,
+            "Supplier":   supplier,
+        })
+        csv_rows.append(
+            f"CBL-{cable_number:03d},{sw_a_port},{node_end_a},"
+            f"{cable_spec},{supplier}"
+        )
+        cable_number += 1
+
+        label_rows.append({
+            "Cable #":    f"CBL-{cable_number:03d}",
+            "Switch End": sw_b_port,
+            "Node End":   node_end_b,
+            "Cable Type": cable_spec,
+            "Supplier":   supplier,
+        })
+        csv_rows.append(
+            f"CBL-{cable_number:03d},{sw_b_port},{node_end_b},"
+            f"{cable_spec},{supplier}"
+        )
+        cable_number += 1
+
+    for p in isl_list_t3:
+        port_num     = p.replace("swp", "")
+        isl_spec     = (
+            profile_t3["isl_cable_short"]["spec"] if isl_short_t3
+            else profile_t3["isl_cable_long"]["spec"]
+        )
+        isl_supplier = (
+            profile_t3["isl_cable_short"]["supplier"] if isl_short_t3
+            else profile_t3["isl_cable_long"]["supplier"]
+        )
+        label_rows.append({
+            "Cable #":    f"CBL-{cable_number:03d}",
+            "Switch End": f"{full_sw_a}-ISL-{p}",
+            "Node End":   f"{full_sw_b}-ISL-{p}",
+            "Cable Type": isl_spec,
+            "Supplier":   isl_supplier,
+        })
+        csv_rows.append(
+            f"CBL-{cable_number:03d},"
+            f"{full_sw_a}-ISL-{p},"
+            f"{full_sw_b}-ISL-{p},"
+            f"{isl_spec},{isl_supplier}"
+        )
+        cable_number += 1
+
+    st.dataframe(label_rows, use_container_width=True)
+
+    plain_labels = (
+        f"VAST CABLE LABELS\n"
+        f"Cluster: {pfx}  |  SE: {se_name or '—'}  |  "
+        f"Date: {install_date}\n"
+        f"{'='*65}\n\n"
+    )
+    for row in label_rows:
+        plain_labels += (
+            f"[{row['Cable #']}]\n"
+            f"  FROM: {row['Switch End']}\n"
+            f"  TO:   {row['Node End']}\n"
+            f"  TYPE: {row['Cable Type']}  |  "
+            f"SUPPLIER: {row['Supplier']}\n\n"
+        )
+
+    csv_header = "Cable #,Switch End,Node End,Cable Type,Supplier"
+    csv_output = csv_header + "\n" + "\n".join(csv_rows)
+
+    dl_col1, dl_col2 = st.columns(2)
+    with dl_col1:
+        st.download_button(
+            label="💾 Download Cable Labels (CSV)",
+            data=csv_output,
+            file_name=(
+                f"{pfx}_Cable_Labels_{date.today().isoformat()}.csv"
+            ),
+            mime="text/csv",
+            key="tab3_labels_csv"
+        )
+    with dl_col2:
+        st.download_button(
+            label="🖨️ Download Cable Labels (Print)",
+            data=plain_labels,
+            file_name=(
+                f"{pfx}_Cable_Labels_{date.today().isoformat()}.txt"
+            ),
+            mime="text/plain",
+            key="tab3_labels_txt"
+        )
+
+    # ── Section 5: Management & NTP Check ─────────────────────────
+    st.markdown("---")
+    st.markdown("### 5️⃣ Management & NTP Pre-Check")
+
+    if not ntp_t3:
+        st.error(
+            "❌ NTP Server not set in Tab 1. "
+            "Set the NTP server before running bootstrap."
+        )
+    else:
+        st.success(f"✅ NTP Server configured: {ntp_t3}")
+
+    st.table([
+        {
+            "Check":  "Switch A MGMT IP reachable",
+            "Value":  sw_a_ip_only,
+            "Action": f"ping {sw_a_ip_only}"
+        },
+        {
+            "Check":  "Switch B MGMT IP reachable",
+            "Value":  sw_b_ip_only,
+            "Action": f"ping {sw_b_ip_only}"
+        },
+        {
+            "Check":  "MGMT Gateway reachable",
+            "Value":  st.session_state.get("tab7_gw", "—"),
+            "Action": f"ping {st.session_state.get('tab7_gw', '—')}"
+        },
+        {
+            "Check":  "NTP Server reachable",
+            "Value":  ntp_t3 or "NOT SET",
+            "Action": f"ping {ntp_t3}" if ntp_t3 else "❌ Set NTP first"
+        },
+    ])
+
+    # ── Section 6: LLDP Validation Script ───────────────────
+    st.markdown("---")
+    st.markdown("### 6️⃣ Post-Cabling LLDP Validation")
+    st.caption(
+        "Paste this into both switch CLIs after cabling is complete. "
+        "Every expected node must appear before starting bootstrap."
+    )
+
+    expected_neighbors = []
+    for i in range(1, num_dboxes + 1):
+        for d in range(1, 3):
+            expected_neighbors.append(
+                f"{pfx}-{dbox_label}-{i}-{dnode_label}-{d}"
+            )
+    for i in range(1, num_cnodes + 1):
+        expected_neighbors.append(f"{pfx}-{cnode_label}-{i}")
+
+    neighbor_grep = "|".join(expected_neighbors)
+
+    cumulus_lldp = f"""#!/bin/bash
+# VAST SE Toolkit — LLDP Validation Script
+# Cluster: {cluster_name or "—"}  |  SE: {se_name or "—"}
+# Run on BOTH Switch A ({sw_a_ip_only}) and Switch B ({sw_b_ip_only})
+# ============================================================
+
+echo "=== LLDP NEIGHBOR CHECK ==="
+echo "Expected nodes: {len(expected_neighbors)}"
+echo ""
+nv show interface lldp
+
+echo ""
+echo "=== FILTERING FOR VAST NODES ==="
+nv show interface lldp | grep -E "{neighbor_grep}"
+
+echo ""
+echo "=== MLAG STATUS ==="
+nv show mlag
+
+echo ""
+echo "=== PEERLINK STATUS ==="
+nv show interface peerlink
+
+echo ""
+echo "=== BRIDGE VLAN STATUS ==="
+nv show bridge domain br_default vlan
+
+echo ""
+echo "=== MTU VERIFICATION (expect {profile_t3['mtu']}) ==="
+nv show interface | grep -E "swp[1-9]|mtu"
+
+echo ""
+echo "=== QoS PFC STATUS ==="
+nv show qos roce
+
+echo ""
+echo "Expected {len(expected_neighbors)} VAST nodes:"
+echo "{chr(10).join(f'  - {n}' for n in expected_neighbors)}"
+"""
+
+    arista_lldp = f"""#!/bin/bash
+# VAST SE Toolkit — LLDP Validation Script (Arista EOS)
+# Cluster: {cluster_name or "—"}  |  SE: {se_name or "—"}
+# Run on BOTH Switch A ({sw_a_ip_only}) and Switch B ({sw_b_ip_only})
+# ============================================================
+
+echo "=== LLDP NEIGHBOR CHECK ==="
+show lldp neighbors
+
+echo ""
+echo "=== FILTERING FOR VAST NODES ==="
+show lldp neighbors | grep -E "{neighbor_grep}"
+
+echo ""
+echo "=== MLAG STATUS ==="
+show mlag
+
+echo ""
+echo "=== PORT-CHANNEL SUMMARY ==="
+show port-channel summary
+
+echo ""
+echo "=== VLAN STATUS ==="
+show vlan
+
+echo ""
+echo "=== MTU VERIFICATION (expect {profile_t3['mtu']}) ==="
+show interfaces | grep -E "Ethernet|MTU"
+
+echo ""
+echo "=== QoS PFC STATUS ==="
+show priority-flow-control
+show qos
+
+echo ""
+echo "Expected {len(expected_neighbors)} VAST nodes:"
+echo "{chr(10).join(f'  - {n}' for n in expected_neighbors)}"
+"""
+
+    lldp_script = (
+        cumulus_lldp if profile_t3["os"] == "cumulus"
+        else arista_lldp
+    )
+
+    st.code(lldp_script, language="bash")
+    st.download_button(
+        label="💾 Download LLDP Validation Script",
+        data=lldp_script,
+        file_name=(
+            f"{pfx}_LLDP_Validation_"
+            f"{date.today().isoformat()}.sh"
+        ),
+        mime="text/plain",
+        key="tab3_lldp_dl"
+    )
+
+    # ── Section 7: Pre-Flight Checklist ─────────────────────
+    st.markdown("---")
+    st.markdown("### 7️⃣ Pre-Flight Checklist")
+    st.caption(
+        "Work through this checklist top to bottom. "
+        "Do not start VAST bootstrap until all items are confirmed."
+    )
+
+    checklist = f"""
+VAST INSTALLATION PRE-FLIGHT CHECKLIST
+=======================================
+Cluster:  {pfx}
+Customer: {customer or "—"}
+SE:       {se_name or "—"}
+Date:     {install_date}
+Switch:   {sw_model_t3}
+Topology: {topology}
+Generated by: VAST SE Toolkit v1.0.0
+
+PHYSICAL
+--------
+☐  All DBoxes racked and powered on
+☐  All CNodes racked and powered on
+☐  All switches racked and powered on
+☐  {"⚠️  400G customer-supplied cables on-site and verified" if profile_t3["customer_cables"] else "VAST-supplied cables verified against packing list"}
+☐  DNode (BF-3) cables run: {profile_t3["node_cable"]["spec"]}
+☐  CNode (CX7)  cables run: {profile_t3["node_cable"]["spec"]}
+☐  ISL cables run:          {isl_cable_t3["spec"]}
+☐  Uplink cables run:       {profile_t3["spine_cable"]["spec"]}
+
+NETWORK — SWITCH A ({sw_a_ip_only})
+{"─" * 40}
+☐  Switch A powered on and booted
+☐  Switch A MGMT IP configured: {sw_a_ip_only}
+☐  Switch A config applied (downloaded from Tab 1)
+☐  Switch A MLAG primary (priority 1000)
+☐  Switch A NTP synced to: {ntp_t3 or "NOT SET — SET BEFORE PROCEEDING"}
+
+NETWORK — SWITCH B ({sw_b_ip_only})
+{"─" * 40}
+☐  Switch B powered on and booted
+☐  Switch B MGMT IP configured: {sw_b_ip_only}
+☐  Switch B config applied (downloaded from Tab 1)
+☐  Switch B MLAG secondary (priority 2000)
+☐  Switch B NTP synced to: {ntp_t3 or "NOT SET — SET BEFORE PROCEEDING"}
+
+{"SPINE SWITCHES" if topology == "Spine-Leaf" else ""}
+{"─" * 40 if topology == "Spine-Leaf" else ""}
+{"☐  Spine A config applied (downloaded from Tab 1)" if topology == "Spine-Leaf" else ""}
+{"☐  Spine B config applied (downloaded from Tab 1)" if topology == "Spine-Leaf" else ""}
+{"☐  Spine MLAG peerlink UP on both spine switches" if topology == "Spine-Leaf" else ""}
+{"☐  Leaf-to-Spine uplinks confirmed UP" if topology == "Spine-Leaf" else ""}
+
+VALIDATION
+----------
+☐  MLAG peerlink UP on both switches
+☐  MLAG state MASTER/BACKUP (not SOLO)
+☐  LLDP validation script run — all {len(expected_neighbors)} nodes visible
+☐  MTU confirmed {profile_t3["mtu"]} on all node ports
+☐  PFC / RoCEv2 QoS confirmed active
+☐  Customer uplink LACP bond UP (if applicable)
+☐  Ping Switch A MGMT: ping {sw_a_ip_only}
+☐  Ping Switch B MGMT: ping {sw_b_ip_only}
+
+{"GPU / DATA NETWORK SWITCH" if gpu_enabled_t3 else ""}
+{"─" * 40 if gpu_enabled_t3 else ""}
+{"☐  GPU Switch A config applied (downloaded from Tab 2)" if gpu_enabled_t3 else ""}
+{"☐  GPU Switch B config applied (downloaded from Tab 2)" if gpu_enabled_t3 else ""}
+{"☐  Customer handoff document delivered to network team" if gpu_enabled_t3 else ""}
+{"☐  GPU switch uplink LACP bond confirmed UP" if gpu_enabled_t3 else ""}
+
+READY FOR BOOTSTRAP
+-------------------
+☐  All above items confirmed
+☐  VAST bootstrap bundle available on laptop
+☐  Customer sign-off on network readiness obtained
+☐  SE confirms: GO FOR BOOTSTRAP ✅
+================================================
+"""
+
+    st.code(checklist, language="text")
+    st.download_button(
+        label="📋 Download Pre-Flight Checklist",
+        data=checklist,
+        file_name=(
+            f"{pfx}_PreFlight_Checklist_"
+            f"{date.today().isoformat()}.txt"
+        ),
+        mime="text/plain",
+        key="tab3_checklist_dl"
+    )
+
+    # ── Section 8: Prerequisites ─────────────────────────────
+    st.markdown("---")
+    st.markdown("### 8️⃣ Prerequisites")
     st.markdown(
         "Before touching any switch hardware, confirm the following:"
     )
@@ -2773,7 +2752,7 @@ with tab6:
         f"**{full_sw_a}** config file: `{fname_sw_a}`",
         f"**{full_sw_b}** config file: `{fname_sw_b}`",
     ]
-    if proc_gpu:
+    if gpu_enabled_t3:
         switch_list += [
             f"**{full_sw_a}-GPU** config file: `{fname_gpu_sw_a}`",
             f"**{full_sw_b}-GPU** config file: `{fname_gpu_sw_b}`",
@@ -2875,8 +2854,8 @@ with tab6:
             f"date\n\n"
             f"# Check NTP sync"
             + (
-                f"\nntpq -p\n# Look for * or + next to {proc_ntp}"
-                if proc_ntp else
+                f"\nntpq -p\n# Look for * or + next to {ntp_t3}"
+                if ntp_t3 else
                 f"\nntpq -p\n# ⚠️ NTP server not set — check Tab 1"
             ),
             language="bash"
@@ -2889,38 +2868,38 @@ with tab6:
         )
         st.markdown("---")
 
-    # ── Section 2: Internal Storage Fabric ──────────────────
+    # ── Section 9: Internal Storage Fabric ──────────────────
     st.markdown("---")
-    st.markdown("### 2️⃣ Internal Storage Fabric Switches")
+    st.markdown("### 9️⃣ Internal Storage Fabric Switches")
     st.markdown(
-        f"Switch model: **{proc_sw_model}**  \n"
-        f"OS: **{'Cumulus NV' if proc_profile['os'] == 'cumulus' else 'Arista EOS'}**"
+        f"Switch model: **{sw_model_t3}**  \n"
+        f"OS: **{'Cumulus NV' if profile_t3['os'] == 'cumulus' else 'Arista EOS'}**"
     )
 
     render_switch_procedure(
         switch_label    = f"Switch A — {full_sw_a}",
         hostname        = full_sw_a,
-        mgmt_ip         = proc_sw_a_ip,
+        mgmt_ip         = sw_a_t3,
         config_filename = fname_sw_a,
         switch_side     = "A",
         is_primary      = True,
-        peer_ip         = proc_sw_b_ip.split("/")[0]
+        peer_ip         = sw_b_t3.split("/")[0]
     )
 
     render_switch_procedure(
         switch_label    = f"Switch B — {full_sw_b}",
         hostname        = full_sw_b,
-        mgmt_ip         = proc_sw_b_ip,
+        mgmt_ip         = sw_b_t3,
         config_filename = fname_sw_b,
         switch_side     = "B",
         is_primary      = False,
-        peer_ip         = proc_sw_a_ip.split("/")[0]
+        peer_ip         = sw_a_t3.split("/")[0]
     )
 
-    # ── Section 3: GPU Switches ──────────────────────────────
-    if proc_gpu:
+    # ── Section 10: GPU Switches ──────────────────────────────
+    if gpu_enabled_t3:
         st.markdown("---")
-        st.markdown("### 3️⃣ GPU / Data Network Switches")
+        st.markdown("### 🔟 GPU / Data Network Switches")
         st.markdown(
             f"Switch model: **{proc_gpu_model}**  \n"
             f"OS: **{'Cumulus NV' if proc_gpu_profile['os'] == 'cumulus' else 'Arista EOS'}**"
@@ -2946,14 +2925,14 @@ with tab6:
             peer_ip         = proc_gpu_sw_a.split("/")[0]
         )
 
-    # ── Section 4: Spine Switches ────────────────────────────
+    # ── Section 11: Spine Switches ────────────────────────────
     if spine_enabled:
         spine_vsuffix   = get_sw_suffix(proc_spine_model)
         spine_a_name    = f"{pfx}-{spine_vsuffix}-SPINE-A"
         spine_b_name    = f"{pfx}-{spine_vsuffix}-SPINE-B"
 
         st.markdown("---")
-        st.markdown("### 4️⃣ Spine Switches")
+        st.markdown("### 1️⃣1️⃣ Spine Switches")
         st.markdown(
             f"Switch model: **{proc_spine_model}**  \n"
             f"OS: **{'Cumulus NV' if proc_spine_profile['os'] == 'cumulus' else 'Arista EOS'}**"
@@ -2979,12 +2958,9 @@ with tab6:
             peer_ip         = proc_spine_a_ip.split("/")[0]
         )
 
-    # ── Section 5: Post-Config Validation ───────────────────
-    section_num = (
-        3 + (1 if proc_gpu else 0) + (1 if spine_enabled else 0)
-    )
+    # ── Section 12: Post-Config Validation ───────────────────
     st.markdown("---")
-    st.markdown(f"### {section_num}️⃣ Post-Config Validation")
+    st.markdown("### 1️⃣2️⃣ Post-Config Validation")
     st.markdown(
         "Run these checks on **every switch** after all configs are applied."
     )
@@ -2996,8 +2972,8 @@ with tab6:
     )
     st.code("nv show mlag", language="bash")
 
-    sw_a_ip_only = proc_sw_a_ip.split("/")[0]
-    sw_b_ip_only = proc_sw_b_ip.split("/")[0]
+    sw_a_ip_only = sw_a_t3.split("/")[0]
+    sw_b_ip_only = sw_b_t3.split("/")[0]
 
     st.markdown("**Expected output — Switch A:**")
     st.code(
@@ -3024,14 +3000,14 @@ with tab6:
     st.markdown("#### MTU Validation")
     st.code(
         f"nv show interface | grep mtu\n"
-        f"# All node ports should show {proc_profile['mtu']}",
+        f"# All node ports should show {profile_t3['mtu']}",
         language="bash"
     )
 
     st.markdown("#### LLDP Validation")
     st.markdown(
         "Once all nodes are cabled, run the LLDP validation script "
-        "from **Tab 3 → Section 4**. "
+        "from **Section 6 above**. "
         f"Confirm all **{(num_dboxes * 2) + num_cnodes}** "
         "expected nodes are visible before starting VAST bootstrap."
     )
@@ -3040,7 +3016,6 @@ with tab6:
         "✅ All switches validated — ready for VAST bootstrap."
     )
 
-# ============================================================
 # TAB 4 — CONFLUENCE INSTALL PLAN GENERATOR
 # ============================================================
 with tab4:
