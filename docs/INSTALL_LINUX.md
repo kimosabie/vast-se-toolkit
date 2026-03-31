@@ -147,6 +147,48 @@ http://localhost:8501
 
 ---
 
+## Step 7 — Set up a Desktop launcher and pin to taskbar *(optional but recommended)*
+
+### Create the launcher file
+
+```bash
+cat > ~/Desktop/vast-se-toolkit.desktop << 'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=VAST SE Toolkit
+Comment=VAST SE Installation Toolkit
+Exec=bash -c "cd ~/projects/vast-se-toolkit && docker compose up -d && xdg-open http://localhost:8501"
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;
+EOF
+chmod +x ~/Desktop/vast-se-toolkit.desktop
+```
+
+### Allow it to run (Ubuntu/GNOME)
+
+1. Double-click the file on your Desktop
+2. A dialog appears — click **"Trust and Launch"**
+
+After this, double-clicking it will start the app and open your browser.
+
+### Pin to taskbar (GNOME)
+
+1. Open the **Activities** overview (press the `Super` key or click Activities top-left)
+2. Search for `VAST SE Toolkit`
+3. Right-click the result → **Add to Favorites**
+
+It will now appear in the left-side dock permanently.
+
+### Pin to taskbar (other desktops)
+
+- **KDE Plasma:** right-click the desktop icon → **Add to Panel**
+- **XFCE:** right-click the desktop icon → **Add to Panel**
+- **Other:** drag the `.desktop` file to your panel/taskbar
+
+---
+
 ## Closing the app
 
 **Just close the browser tab — that's it.** The app keeps running in the background, ready for next time.

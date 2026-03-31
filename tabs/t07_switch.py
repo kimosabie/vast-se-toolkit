@@ -1,15 +1,7 @@
 import streamlit as st
 from datetime import date
-from config import (
-    HARDWARE_PROFILES, SPEED_RANK, DBOX_PROFILES, CNODE_PERF,
-    DEVICE_SPECS, DEVICE_IMAGES, DEVICE_IMAGE_MAP, DR_ESTIMATES,
-)
-from helpers.context import get_ctx, build_sw_name
-from helpers.images import _get_device_img_b64, _strip_white_bg
-from helpers.svg_export import (
-    _svg_to_pdf_cached, _svg_to_jpg_cached,
-    _build_multipage_pdf, _build_consolidated_pdf,
-)
+from config import HARDWARE_PROFILES, SPEED_RANK
+from helpers.context import get_ctx
 from helpers.port_logic import (
     get_sw_suffix, get_port_mappings, validate_port_counts, render_cable_summary,
 )

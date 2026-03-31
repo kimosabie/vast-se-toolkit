@@ -123,14 +123,30 @@ http://localhost:8501
 
 ---
 
-## Step 7 — Set up the Desktop launcher *(optional)*
+## Step 7 — Set up the Desktop launcher and pin to Dock *(optional but recommended)*
 
-This lets you start the toolkit with a double-click.
+This lets you start the toolkit with a single click — no terminal needed.
 
-1. Open **Finder** → navigate to `~/projects/vast-se-toolkit/`
+### Copy the launcher to your Desktop
+
+1. Open **Finder** → press `Cmd + Shift + G` → type `~/projects/vast-se-toolkit/` → press Enter
 2. Copy **`Start VAST SE Toolkit.command`** to your Desktop
-3. **First time only:** right-click it → **Open** (macOS security prompt — click Open)
-4. After that, just double-click it anytime to launch
+
+### Allow it to run (first time only)
+
+macOS will block the script the first time:
+
+1. Right-click the file on your Desktop → **Open**
+2. A security dialog appears — click **Open** again
+3. After this, you can double-click it normally forever
+
+### Pin to the Dock
+
+1. Double-click the launcher once so it runs (this registers it with the system)
+2. Find the **Terminal** icon that appears in the Dock while it runs
+3. Right-click the Terminal icon in the Dock → **Options** → **Keep in Dock**
+
+> **Tip:** After pinning, you can rename or change the icon: right-click the Dock icon → **Options** → **Show in Finder**, then `Cmd + I` to open info and drag a new icon image onto it.
 
 ---
 
