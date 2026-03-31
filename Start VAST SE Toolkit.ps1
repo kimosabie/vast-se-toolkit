@@ -1,6 +1,6 @@
 # =============================================================
-# VAST SE Toolkit — Windows Launcher
-# Right-click → Run with PowerShell to start the app.
+# VAST SE Toolkit - Windows Launcher
+# Right-click -> Run with PowerShell to start the app.
 # Copy to Desktop for easy use.
 # =============================================================
 
@@ -10,7 +10,7 @@ Add-Type -AssemblyName System.Windows.Forms
 $repoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoDir
 
-# ── Start Docker Desktop if not running ──────────────────────
+# -- Start Docker Desktop if not running ----------------------
 $dockerOK = $false
 try {
     docker info 2>$null | Out-Null
@@ -18,13 +18,12 @@ try {
 } catch {}
 
 if (-not $dockerOK) {
-    Write-Host "Docker Desktop is not running — starting it..."
+    Write-Host "Docker Desktop is not running - starting it..."
 
     $dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
     if (Test-Path $dockerExe) {
         Start-Process $dockerExe
     } else {
-        # Fallback: try launching via Start Menu shortcut
         Start-Process "Docker Desktop"
     }
 
@@ -38,7 +37,7 @@ if (-not $dockerOK) {
             $dockerOK = $true
             break
         } catch {}
-        Write-Host "Waiting for Docker Desktop to start... ($($waited)s)"
+        Write-Host "Waiting for Docker Desktop to start... ($waited s)"
     }
 
     if (-not $dockerOK) {
@@ -54,7 +53,7 @@ if (-not $dockerOK) {
     Write-Host "Docker Desktop is ready."
 }
 
-# ── Check for updates ─────────────────────────────────────────
+# -- Check for updates ----------------------------------------
 Write-Host "Checking for updates..."
 $fetchSuccess = $false
 try {
@@ -68,7 +67,7 @@ if ($fetchSuccess) {
 
     if ($local -ne $remote) {
         $result = [System.Windows.Forms.MessageBox]::Show(
-            "An update is available for VAST SE Toolkit.`n`nUpdate now? This takes about 1–2 minutes.",
+            "An update is available for VAST SE Toolkit.`n`nUpdate now? This takes about 1-2 minutes.",
             "VAST SE Toolkit Update",
             [System.Windows.Forms.MessageBoxButtons]::YesNo,
             [System.Windows.Forms.MessageBoxIcon]::Information
@@ -87,12 +86,11 @@ if ($fetchSuccess) {
         docker compose up -d
     }
 } else {
-    # Offline or SSH not available — just start existing version
     Write-Host "Could not reach GitHub (offline?). Starting existing version."
     docker compose up -d
 }
 
-# ── Wait for app and open browser ────────────────────────────
+# -- Wait for app and open browser ----------------------------
 Write-Host "Starting VAST SE Toolkit..."
 $ready = $false
 for ($i = 0; $i -lt 20; $i++) {
