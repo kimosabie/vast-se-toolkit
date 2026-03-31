@@ -415,6 +415,66 @@ def _svg_to_jpg_cached(svg_str, out_w, out_h):
     white_bg.convert("RGB").save(jpg_buf, format="JPEG", quality=92)
     return jpg_buf.getvalue()
 
+
+@st.cache_data(max_entries=5, show_spinner=False)
+def _build_multipage_pdf(svg_strs, paper_w, paper_h):
+    """One rack per PDF page. svg_strs must be a tuple (hashable for Streamlit cache)."""
+    import cairosvg as _cairosvg
+    from PIL import Image as _PILImage
+    import io as _io
+    page_imgs = []
+    for svg in svg_strs:
+        buf = _io.BytesIO()
+        _cairosvg.svg2png(bytestring=svg.encode(), write_to=buf,
+                          output_width=int(paper_w), output_height=int(paper_h))
+        buf.seek(0)
+        page_imgs.append(_PILImage.open(buf).copy().convert("RGB"))
+    if not page_imgs:
+        return b""
+    pdf_buf = _io.BytesIO()
+    page_imgs[0].save(pdf_buf, format="PDF", resolution=150,
+                      save_all=True, append_images=page_imgs[1:])
+    return pdf_buf.getvalue()
+
+
+@st.cache_data(max_entries=5, show_spinner=False)
+def _build_consolidated_pdf(svg_strs, paper_w, paper_h):
+    """All racks side-by-side on a single landscape page, top-aligned so rack
+    bodies sit at a uniform level and summaries hang below each rack."""
+    import cairosvg as _cairosvg
+    from PIL import Image as _PILImage
+    import io as _io
+    HGAP = 30
+    V_MARGIN = 24   # top and bottom margin in output pixels
+    rack_imgs = []
+    for svg in svg_strs:
+        buf = _io.BytesIO()
+        _cairosvg.svg2png(bytestring=svg.encode(), write_to=buf)
+        buf.seek(0)
+        rack_imgs.append(_PILImage.open(buf).copy())
+    if not rack_imgs:
+        return b""
+    max_h   = max(img.height for img in rack_imgs)
+    total_w = sum(img.width  for img in rack_imgs) + HGAP * (len(rack_imgs) - 1)
+    # Scale to fit within page, reserving vertical margins
+    scale = min(paper_w / total_w, (paper_h - 2 * V_MARGIN) / max_h)
+    # Centre the rack group horizontally
+    scaled_total_w = sum(int(img.width * scale) for img in rack_imgs) + int(HGAP * scale) * (len(rack_imgs) - 1)
+    x = int((paper_w - scaled_total_w) / 2)
+    canvas = _PILImage.new("RGB", (int(paper_w), int(paper_h)), (255, 255, 255))
+    for img in rack_imgs:
+        nw, nh = int(img.width * scale), int(img.height * scale)
+        rgba = img.convert("RGBA").resize((nw, nh), _PILImage.Resampling.LANCZOS)
+        bg = _PILImage.new("RGBA", (nw, nh), (255, 255, 255, 255))
+        bg.paste(rgba, mask=rgba.split()[3])
+        # Top-align all racks at the same y so rack bodies are level;
+        # summaries of different lengths extend naturally downward.
+        canvas.paste(bg.convert("RGB"), (x, V_MARGIN))
+        x += nw + int(HGAP * scale)
+    pdf_buf = _io.BytesIO()
+    canvas.save(pdf_buf, format="PDF", resolution=150)
+    return pdf_buf.getvalue()
+
 # Data reduction estimates by use case (min, typical, max multiplier)
 DR_ESTIMATES = {
     "AI Training / Inference":  (1.0, 1.2, 1.5),
@@ -4811,13 +4871,17 @@ with tab9:
 
         # ── Display SVGs (scaled down for on-screen view) ────
         _DISP_SCALE = 0.62
-        _disp_component_h = int(rack_u * 40 * _DISP_SCALE) + 60
+        # ROW_H=16, SUM overhead ≈ SUM_PAD+SUM_HDR+COL_HDR+TOT_H+PAD = 14+22+18+20+14 = 88
+        _disp_summary_h = lambda n_devs: int((88 + n_devs * 16) * _DISP_SCALE)
+        _disp_rack_h = int((36 + rack_u * 40 + 20) * _DISP_SCALE)  # HDR_H + rack body + PAD*2
         svg_cols = st.columns(min(num_racks, 3))
         for _ri, _rack_devs in enumerate(rack_groups):
             _disp_svg = _render_rack(_rack_devs, _ri + 1, rack_u, rack_top_down,
-                                     with_summary=False, display_scale=_DISP_SCALE)
+                                     with_summary=True, display_scale=_DISP_SCALE,
+                                     light_theme=True)
+            _disp_h = _disp_rack_h + _disp_summary_h(len(_rack_devs)) + 20
             with svg_cols[_ri % len(svg_cols)]:
-                st.components.v1.html(_disp_svg, height=_disp_component_h, scrolling=False)
+                st.components.v1.html(_disp_svg, height=_disp_h, scrolling=False)
 
         # ── Downloads ─────────────────────────────────────────
         # PDF/JPG are generated on demand (button click) to avoid
@@ -4828,9 +4892,23 @@ with tab9:
         except ImportError:
             _cairosvg_ok = False
 
-        _A4_W, _A4_H = 1240, 1754
+        # Paper size dimensions at 150 dpi (landscape only)
+        _PAPER_SIZES = {
+            "A4 Landscape": (1754, 1240),
+            "A3 Landscape": (2480, 1754),
+        }
 
         st.markdown("#### ⬇️ Downloads")
+
+        if _cairosvg_ok:
+            _pdf_size = st.radio(
+                "PDF paper size",
+                options=list(_PAPER_SIZES.keys()),
+                horizontal=True,
+                key="rack_pdf_size",
+            )
+            _pdf_w, _pdf_h = _PAPER_SIZES[_pdf_size]
+
         for _ri, _rack_devs in enumerate(rack_groups):
             _base_fname = f"{pfx or 'rack'}_rack{_ri + 1}_{install_date}"
             if num_racks > 1:
@@ -4856,6 +4934,11 @@ with tab9:
             if _cairosvg_ok:
                 _pdf_ss = f"_rack_pdf_{_ri}"
                 _jpg_ss = f"_rack_jpg_{_ri}"
+                _pdf_size_ss = f"_rack_pdf_size_{_ri}"
+
+                # Invalidate cached PDF if paper size changed
+                if st.session_state.get(_pdf_size_ss) != _pdf_size and _pdf_ss in st.session_state:
+                    del st.session_state[_pdf_ss]
 
                 with _dl_c2:
                     if _pdf_ss in st.session_state:
@@ -4870,7 +4953,8 @@ with tab9:
                     else:
                         if st.button("🔄 Generate PDF", key=f"rack_gen_pdf_{_ri}",
                                      use_container_width=True):
-                            st.session_state[_pdf_ss] = _svg_to_pdf_cached(_dl_svg, _A4_W, _A4_H)
+                            st.session_state[_pdf_ss] = _svg_to_pdf_cached(_dl_svg, _pdf_w, _pdf_h)
+                            st.session_state[_pdf_size_ss] = _pdf_size
                             st.rerun()
 
                 with _dl_c3:
@@ -4886,8 +4970,66 @@ with tab9:
                     else:
                         if st.button("🔄 Generate JPG", key=f"rack_gen_jpg_{_ri}",
                                      use_container_width=True):
-                            st.session_state[_jpg_ss] = _svg_to_jpg_cached(_dl_svg, _A4_W, _A4_H)
+                            st.session_state[_jpg_ss] = _svg_to_jpg_cached(_dl_svg, _pdf_w, _pdf_h)
                             st.rerun()
+
+        # ── Multi-rack PDF exports ────────────────────────────
+        if _cairosvg_ok and num_racks > 1:
+            st.markdown("---")
+            st.markdown("##### 📑 Multi-Rack PDF Exports")
+            _all_svgs = tuple(
+                _render_rack(grp, i + 1, rack_u, rack_top_down,
+                             with_summary=True, use_kw=rack_use_kw, use_lbs=rack_use_lbs,
+                             display_scale=1.0, light_theme=True)
+                for i, grp in enumerate(rack_groups)
+            )
+            _all_fname = f"{pfx or 'rack'}_all_racks_{install_date}"
+            _mp_ss  = "_rack_pdf_multipage"
+            _co_ss  = "_rack_pdf_consolidated"
+            _mp_sz  = "_rack_pdf_multipage_size"
+            _co_sz  = "_rack_pdf_consolidated_size"
+
+            # Invalidate if paper size changed
+            if st.session_state.get(_mp_sz) != _pdf_size and _mp_ss in st.session_state:
+                del st.session_state[_mp_ss]
+            if st.session_state.get(_co_sz) != _pdf_size and _co_ss in st.session_state:
+                del st.session_state[_co_ss]
+
+            _exp_c1, _exp_c2 = st.columns(2)
+
+            with _exp_c1:
+                if _mp_ss in st.session_state:
+                    st.download_button(
+                        "⬇️ All Racks PDF (1 per page)",
+                        data=st.session_state[_mp_ss],
+                        file_name=f"{_all_fname}_multipage.pdf",
+                        mime="application/pdf",
+                        key="rack_dl_pdf_multipage",
+                        use_container_width=True,
+                    )
+                else:
+                    if st.button("🔄 Generate All Racks PDF (1 per page)",
+                                 key="rack_gen_pdf_multipage", use_container_width=True):
+                        st.session_state[_mp_ss] = _build_multipage_pdf(_all_svgs, _pdf_w, _pdf_h)
+                        st.session_state[_mp_sz] = _pdf_size
+                        st.rerun()
+
+            with _exp_c2:
+                if _co_ss in st.session_state:
+                    st.download_button(
+                        "⬇️ Consolidated PDF (all racks on 1 page)",
+                        data=st.session_state[_co_ss],
+                        file_name=f"{_all_fname}_consolidated.pdf",
+                        mime="application/pdf",
+                        key="rack_dl_pdf_consolidated",
+                        use_container_width=True,
+                    )
+                else:
+                    if st.button("🔄 Generate Consolidated PDF (all racks on 1 page)",
+                                 key="rack_gen_pdf_consolidated", use_container_width=True):
+                        st.session_state[_co_ss] = _build_consolidated_pdf(_all_svgs, _pdf_w, _pdf_h)
+                        st.session_state[_co_sz] = _pdf_size
+                        st.rerun()
 
         # Legend
         st.markdown("---")
