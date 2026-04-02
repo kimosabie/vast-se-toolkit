@@ -38,6 +38,11 @@ KB_LINKS = [
                 "url": "https://www.vastdata.com",
                 "desc": "Product overview, datasheets, whitepapers and case studies"
             },
+            {
+                "title": "NVIDIA Ethernet Networking",
+                "url": "https://www.nvidia.com/en-us/networking/products/ethernet/",
+                "desc": "Spectrum switches, ConnectX NICs, BlueField DPUs — full NVIDIA ethernet product portfolio"
+            },
         ],
     },
     {
