@@ -152,14 +152,14 @@ http://localhost:8501
 ### Create the launcher file
 
 ```bash
-cat > ~/Desktop/vast-se-toolkit.desktop << 'EOF'
+cat > ~/Desktop/vast-se-toolkit.desktop << EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
 Name=VAST SE Toolkit
 Comment=VAST SE Installation Toolkit
 Exec=bash -c "cd ~/projects/vast-se-toolkit && docker compose up -d && xdg-open http://localhost:8501"
-Icon=utilities-terminal
+Icon=$HOME/projects/vast-se-toolkit/images/vast_logo_icon.png
 Terminal=false
 Categories=Development;
 EOF

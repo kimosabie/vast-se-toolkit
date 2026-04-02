@@ -27,8 +27,12 @@ def _inv_cache_invalidate():
 # ============================================================
 st.set_page_config(
     page_title="VAST SE Installation Toolkit",
-    page_icon="⚡",
+    page_icon="/app/images/vast_logo_icon.png",
     layout="wide"
+)
+st.logo(
+    "/app/images/vast_logo_wide.png",
+    icon_image="/app/images/vast_logo_icon.png",
 )
 
 # ============================================================
