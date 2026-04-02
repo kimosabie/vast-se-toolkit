@@ -289,8 +289,9 @@ import tabs.t09_rack       as _t09
 import tabs.t10_inventory  as _t10
 import tabs.t11_ai         as _t11
 import tabs.t12_network    as _t12
+import tabs.t13_kb         as _t13
 
-tab1, tab2, tab3, tab7, tab8, tab9, tab12, tab10, tab11, tab5, tab4 = st.tabs([
+tab1, tab2, tab3, tab7, tab8, tab9, tab12, tab10, tab11, tab5, tab4, tab13 = st.tabs([
     "🧑‍💻 Session",
     "📏 Capacity & Performance Sizer",
     "📋 Project Details",
@@ -302,6 +303,7 @@ tab1, tab2, tab3, tab7, tab8, tab9, tab12, tab10, tab11, tab5, tab4 = st.tabs([
     "🤖 AI Assistant",
     "✅ Pre-Flight, Validation & Installation",
     "📄 Confluence Install Plan",
+    "📖 Knowledge Base",
 ])
 
 with tab1:  _t01.render()
@@ -315,3 +317,4 @@ with tab9:  _t09.render()
 with tab10: _t10.render()
 with tab11: _t11.render()
 with tab12: _t12.render()
+with tab13: _t13.render()
