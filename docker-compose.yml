@@ -1,7 +1,7 @@
 services:
   vast-se-toolkit:
     build: .
-    image: vast-se-toolkit:latest
+    image: ghcr.io/kimosabie/vast-se-toolkit:latest
     container_name: vast-se-toolkit
     restart: unless-stopped
     ports:

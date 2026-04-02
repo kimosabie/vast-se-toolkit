@@ -46,49 +46,15 @@ from helpers.svg_export import (
 from helpers.port_logic import (
     get_sw_suffix, get_port_mappings, validate_port_counts, render_cable_summary,
 )
+from helpers.state import (
+    _is_saveable, _SAVEABLE_EXACT, _SKIP_EXACT, _SKIP_PREFIXES,
+)
 
 # ============================================================
 # PENDING LOAD / CLEAR
 # Must run before any widgets are instantiated so that
 # session_state values are set before widgets read them.
 # ============================================================
-# Keys we save and restore — explicit whitelist.
-# Excludes button/download_button keys which Streamlit forbids setting from code.
-_SAVEABLE_PREFIXES = (
-    "proj_", "tab7_", "tab8_", "spine_", "name_", "sizer_", "rack_",
-)
-_SAVEABLE_EXACT = {
-    "se_name", "customer", "cluster_name", "install_date",
-}
-_SKIP_SUFFIXES = ("_dl_A", "_dl_B", "_dl_a", "_dl_b", "_download",
-                  "_handoff_dl", "tab7_download", "tab8_download")
-# Buttons, file_uploaders, and download_buttons whose keys start with rack_ but
-# must NOT be restored from saved state (Streamlit forbids setting them via session_state).
-_SKIP_EXACT = {
-    "rack_cust_add", "rack_cust_img",
-    "rack_cust_rm",   # prefix match handled below
-    "rack_cust_name",  # old key — keep excluded for backward compat
-    "rack_pick_add",
-    "rack_pdf_size",   # UI preference, not project data
-}
-_SKIP_PREFIXES = (
-    "rack_inv_add_", "rack_inv_del_",
-    "rack_cust_rm_",
-    "rack_dl_", "rack_gen_",
-)
-
-def _is_saveable(k):
-    if k in _SAVEABLE_EXACT:
-        return True
-    if k in _SKIP_EXACT:
-        return False
-    if any(k.startswith(sp) for sp in _SKIP_PREFIXES):
-        return False
-    if any(k.startswith(p) for p in _SAVEABLE_PREFIXES):
-        if any(k.endswith(s) or k == s for s in _SKIP_SUFFIXES):
-            return False
-        return True
-    return False
 
 _just_loaded = False
 if "_pending_load" in st.session_state:
