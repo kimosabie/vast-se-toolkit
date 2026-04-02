@@ -48,9 +48,11 @@ def render():
 
         _dr_min, _dr_typ, _dr_max = DR_ESTIMATES[st.session_state.get("sizer_use_case", list(DR_ESTIMATES.keys())[0])]
         st.caption(f"Typical DRR range for this use case: {_dr_min}x — {_dr_max}x (typical: {_dr_typ}x)")
+        if "sizer_drr_override" not in st.session_state:
+            st.session_state["sizer_drr_override"] = 0.0
         sizer_drr_override = st.number_input(
             "SE DRR Override (leave at 0 to use use-case typical)",
-            min_value=0.0, max_value=10.0, value=0.0, step=0.1,
+            min_value=0.0, max_value=10.0, step=0.1,
             key="sizer_drr_override"
         )
 
@@ -61,9 +63,11 @@ def render():
         )
 
         st.markdown("### 🎯 Capacity Requirement")
+        if "sizer_cap_required" not in st.session_state:
+            st.session_state["sizer_cap_required"] = 0.0
         sizer_cap_required = st.number_input(
             "Capacity Required",
-            min_value=0.0, value=0.0, step=10.0,
+            min_value=0.0, step=10.0,
             key="sizer_cap_required"
         )
         sizer_cap_unit = st.radio(
@@ -74,12 +78,16 @@ def render():
         )
 
         st.markdown("### 📈 Growth")
+        if "sizer_growth_years" not in st.session_state:
+            st.session_state["sizer_growth_years"] = 3
         sizer_growth_years = st.slider(
-            "Growth projection (years)", min_value=1, max_value=5, value=3,
+            "Growth projection (years)", min_value=1, max_value=5,
             key="sizer_growth_years"
         )
+        if "sizer_growth_pct" not in st.session_state:
+            st.session_state["sizer_growth_pct"] = 20
         sizer_growth_pct = st.slider(
-            "Annual data growth (%)", min_value=0, max_value=100, value=20,
+            "Annual data growth (%)", min_value=0, max_value=100,
             key="sizer_growth_pct"
         )
 
