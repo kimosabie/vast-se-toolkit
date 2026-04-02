@@ -19,9 +19,11 @@ def render():
             options=list(CNODE_PERF.keys()),
             key="sizer_cnode_gen"
         )
+        if "sizer_num_cnodes" not in st.session_state:
+            st.session_state["sizer_num_cnodes"] = 4
         sizer_num_cnodes = st.slider(
             "Number of CNodes",
-            min_value=1, max_value=28, value=4,
+            min_value=1, max_value=28,
             key="sizer_num_cnodes"
         )
         sizer_dbox_model = st.selectbox(
@@ -29,9 +31,11 @@ def render():
             options=list(DBOX_PROFILES.keys()),
             key="sizer_dbox_model"
         )
+        if "sizer_num_dboxes" not in st.session_state:
+            st.session_state["sizer_num_dboxes"] = 1
         sizer_num_dboxes = st.slider(
             "Number of DBoxes",
-            min_value=1, max_value=14, value=1,
+            min_value=1, max_value=14,
             key="sizer_num_dboxes"
         )
 
@@ -54,6 +58,19 @@ def render():
             "Workload Read/Write Ratio",
             options=list(CNODE_PERF["GEN6 Turin"].keys()),
             key="sizer_ratio"
+        )
+
+        st.markdown("### 🎯 Capacity Requirement")
+        sizer_cap_required = st.number_input(
+            "Capacity Required",
+            min_value=0.0, value=0.0, step=10.0,
+            key="sizer_cap_required"
+        )
+        sizer_cap_unit = st.radio(
+            "Unit",
+            options=["TB", "PB"],
+            horizontal=True,
+            key="sizer_cap_unit"
         )
 
         st.markdown("### 📈 Growth")
@@ -112,6 +129,29 @@ def render():
             ]
         }
         st.table(cap_data)
+
+        # ── Capacity requirement check ───────────────────────
+        sizer_cap_required = st.session_state.get("sizer_cap_required", 0.0)
+        sizer_cap_unit = st.session_state.get("sizer_cap_unit", "TB")
+        if sizer_cap_required > 0:
+            req_tb = sizer_cap_required * 1000 if sizer_cap_unit == "PB" else sizer_cap_required
+            req_display = f"{sizer_cap_required:,.1f} {sizer_cap_unit}"
+            if req_tb <= eff_typ_tb:
+                st.success(
+                    f"✅ **Hit** — {req_display} required, "
+                    f"{eff_typ_tb:,.1f} TB available at typical DR ({dr_effective}x)"
+                )
+            elif req_tb <= eff_max_tb:
+                st.warning(
+                    f"⚠️ **Borderline** — {req_display} required exceeds typical DR "
+                    f"({eff_typ_tb:,.1f} TB at {dr_effective}x) but fits max DR "
+                    f"({eff_max_tb:,.1f} TB at {dr_max}x). Verify customer DRR."
+                )
+            else:
+                st.error(
+                    f"❌ **Miss** — {req_display} required exceeds max effective capacity "
+                    f"({eff_max_tb:,.1f} TB at {dr_max}x DR). Add more DBoxes."
+                )
 
         # ── Performance block ────────────────────────────────
         st.markdown("#### ⚡ Performance")

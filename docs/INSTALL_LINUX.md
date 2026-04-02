@@ -206,7 +206,8 @@ docker compose down
 ```bash
 cd ~/projects/vast-se-toolkit
 git pull
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 
 ---

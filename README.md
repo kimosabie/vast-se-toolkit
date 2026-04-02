@@ -26,9 +26,9 @@ See [INSTALL.md](INSTALL.md) for full setup instructions including desktop launc
 
 | Tab | Feature |
 |-----|---------|
-| 🧑‍💻 Session | SE identity, SFDC/ticket/Slack links, save/load/new project |
-| 📏 Capacity & Performance Sizer | DBox/CNode hardware selector, performance curves, DRR override |
-| 📋 Project Details | Cluster inventory, topology, hardware, PSNT, software versions, site notes |
+| 🧑‍💻 Session | SE identity, install date, project name, save/load/new project |
+| 📏 Capacity & Performance Sizer | DBox/CNode hardware selector, capacity requirement checker, performance curves, DRR override |
+| 📋 Project Details | SFDC/ticket/Slack links, software versions, cluster inventory, topology, hardware, site notes |
 | 🔌 Internal Switch — Southbound | Cumulus NV + Arista EOS config generation, port mapping, cable guide |
 | 🖥️ Data Switch — Northbound | GPU/data network switch config (optional, toggle-enabled) |
 | 📐 Rack Diagram | Visual rack layout, power/weight analysis, PDF/JPG export (A4/A3 landscape) |
@@ -90,17 +90,21 @@ See [INSTALL.md](INSTALL.md) for full setup instructions including desktop launc
 
 ```
 vast-se-toolkit/
-├── app.py                  ← main application (~4500 lines)
+├── app.py                  ← orchestrator (page config, sidebar, tab layout)
+├── config.py               ← hardware profiles and static data
 ├── db.py                   ← SQLite project database
+├── helpers/                ← shared utilities
+│   ├── context.py          ← derived session state values
+│   ├── images.py           ← device image loading
+│   ├── port_logic.py       ← port mapping and cable logic
+│   ├── state.py            ← session state key filtering
+│   └── svg_export.py       ← PDF/JPG export
+├── tabs/                   ← one file per tab
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
 ├── setup.sh                ← one-time setup script
-├── templates/              ← Jinja2 switch config templates
-│   ├── cumulus_nv.j2
-│   ├── cumulus_spine.j2
-│   ├── arista_eos.j2
-│   └── arista_spine.j2
+├── templates/              ← Jinja2 switch config templates (volume-mounted)
 ├── images/                 ← device hardware photos (volume-mounted)
 ├── outputs/                ← generated config files (host-mounted)
 └── data/
@@ -123,7 +127,8 @@ vast-se-toolkit/
 ```bash
 cd ~/projects/vast-se-toolkit
 git pull
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 
 Your saved projects and generated configs are never affected by updates.

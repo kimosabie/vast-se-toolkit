@@ -10,41 +10,7 @@ def render():
         "Fields marked ⚠️ are required."
     )
 
-    # ── Cluster Inventory ────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### 📦 Cluster Inventory")
-
-    inv_col1, inv_col2 = st.columns(2)
-    with inv_col1:
-        proj_num_dboxes = st.slider(
-            "Number of DBoxes", min_value=1, max_value=14,
-            key="proj_num_dboxes"
-        )
-    with inv_col2:
-        proj_num_cnodes = st.slider(
-            "Number of CNodes", min_value=1, max_value=28,
-            key="proj_num_cnodes"
-        )
-
-    # ── Topology ─────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### 🌐 Deployment Topology")
-
-    proj_topology = st.radio(
-        "Select topology",
-        options=["Leaf Pair", "Spine-Leaf"],
-        horizontal=True,
-        key="proj_topology"
-    )
-    if proj_topology == "Spine-Leaf":
-        st.info(
-            "**Spine-Leaf mode** — Leaf switches connect to nodes. "
-            "Spine switches provide the uplink fabric. "
-            "Both leaf and spine run as MLAG pairs. "
-            "Spine must be same vendor and equal or greater speed than leaf."
-        )
-
-    # ── Opportunity Links ────────────────────────────────────
+    # ── Links & Identity ─────────────────────────────────────
     st.markdown("---")
     st.markdown("### 🔗 Links & Identity")
 
@@ -56,6 +22,15 @@ def render():
         proj_license = st.text_input("License Key",
                          placeholder="e.g. LS-003197",
                          key="proj_license")
+        proj_sfdc    = st.text_input("SFDC Opportunity URL",
+                         placeholder="https://vastdata.lightning.force.com/…",
+                         key="proj_sfdc")
+        proj_ticket  = st.text_input("Install Ticket URL",
+                         placeholder="https://vastdata.lightning.force.com/…",
+                         key="proj_ticket")
+        proj_slack   = st.text_input("Slack Internal Channel",
+                         placeholder="#cust-acme-corp",
+                         key="proj_slack")
     with link_col2:
         proj_lucid    = st.text_input("Lucidchart URL",
                           placeholder="https://lucid.app/lucidchart/…",
@@ -91,6 +66,40 @@ def render():
                           value=False, key="proj_phison")
         if proj_phison:
             st.warning("⚠️ PHISON drives require FW update check before install.")
+
+    # ── Cluster Inventory ────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 📦 Cluster Inventory")
+
+    inv_col1, inv_col2 = st.columns(2)
+    with inv_col1:
+        proj_num_dboxes = st.slider(
+            "Number of DBoxes", min_value=1, max_value=14,
+            key="proj_num_dboxes"
+        )
+    with inv_col2:
+        proj_num_cnodes = st.slider(
+            "Number of CNodes", min_value=1, max_value=28,
+            key="proj_num_cnodes"
+        )
+
+    # ── Topology ─────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🌐 Deployment Topology")
+
+    proj_topology = st.radio(
+        "Select topology",
+        options=["Leaf Pair", "Spine-Leaf"],
+        horizontal=True,
+        key="proj_topology"
+    )
+    if proj_topology == "Spine-Leaf":
+        st.info(
+            "**Spine-Leaf mode** — Leaf switches connect to nodes. "
+            "Spine switches provide the uplink fabric. "
+            "Both leaf and spine run as MLAG pairs. "
+            "Spine must be same vendor and equal or greater speed than leaf."
+        )
 
     # ── Hardware Details ─────────────────────────────────────
     st.markdown("---")
@@ -183,7 +192,7 @@ def render():
     st.markdown("---")
     required = {
         "Customer Name":    st.session_state.get("customer",          ""),
-        "Cluster Name":     st.session_state.get("cluster_name",      ""),
+        "Project Name":     st.session_state.get("cluster_name",      ""),
         "SE Name":          st.session_state.get("se_name",           ""),
         "System PSNT":      st.session_state.get("proj_psnt",         ""),
         "License Key":      st.session_state.get("proj_license",      ""),
@@ -205,6 +214,3 @@ def render():
         )
     else:
         st.success("✅ Project Details complete — ready to generate configs and install plan.")
-
-
-

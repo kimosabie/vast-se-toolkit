@@ -33,13 +33,6 @@ def render():
         )
         st.session_state["customer"] = customer
 
-        cluster_name = st.text_input(
-            "Cluster Name",
-            value=st.session_state.get("cluster_name", ""),
-            placeholder="e.g. ACME-VAST-01"
-        )
-        st.session_state["cluster_name"] = cluster_name
-
     with id_col2:
         _saved_date = st.session_state.get("install_date", date.today())
         if isinstance(_saved_date, str):
@@ -51,15 +44,12 @@ def render():
         install_date = st.date_input("Install Date", value=_saved_date)
         st.session_state["install_date"] = str(install_date)
 
-        proj_sfdc   = st.text_input("SFDC Opportunity URL",
-                        placeholder="https://vastdata.lightning.force.com/…",
-                        key="proj_sfdc")
-        proj_ticket = st.text_input("Install Ticket URL",
-                        placeholder="https://vastdata.lightning.force.com/…",
-                        key="proj_ticket")
-        proj_slack  = st.text_input("Slack Internal Channel",
-                        placeholder="#cust-acme-corp",
-                        key="proj_slack")
+        cluster_name = st.text_input(
+            "Project Name",
+            value=st.session_state.get("cluster_name", ""),
+            placeholder="e.g. ACME-VAST-01"
+        )
+        st.session_state["cluster_name"] = cluster_name
 
     # ── Project Save / Load ──────────────────────────────────
     st.markdown("---")
@@ -115,12 +105,14 @@ def render():
                     _save_data = {k: v for k, v in st.session_state.items()
                                   if _is_saveable(k)}
                     _save_data["_db_project_id"] = st.session_state.get("_db_project_id")
+                    _proj_name = st.session_state.get("cluster_name", "").strip()
+                    _prefixed_label = f"{_proj_name} — {_final_label}" if _proj_name else _final_label
                     pid = _db.save_project(
                         _save_data,
-                        label=_final_label
+                        label=_prefixed_label
                     )
                     st.session_state["_db_project_id"] = pid
-                    st.session_state["_save_msg"] = f"✅ Saved — {_final_label}"
+                    st.session_state["_save_msg"] = f"✅ Saved — {_prefixed_label}"
                     st.rerun()
                 except Exception as e:
                     st.error(f"Save failed: {e}")

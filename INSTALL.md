@@ -54,7 +54,8 @@ When Kimo releases a new version, open a terminal and run:
 ```bash
 cd ~/projects/vast-se-toolkit
 git pull
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 
 Your saved projects are never affected by updates.
