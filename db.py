@@ -447,6 +447,37 @@ def list_backups(backup_dir: str = None) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Cloud backup (Google Drive / OneDrive)
+# ---------------------------------------------------------------------------
+
+CLOUD_BACKUP_PATH = Path("/app/cloud_backup")
+
+
+def is_cloud_backup_configured() -> bool:
+    """True if CLOUD_SYNC_DIR was set in .env (real cloud folder mounted)."""
+    return bool(os.environ.get("CLOUD_SYNC_DIR", "").strip())
+
+
+def cloud_backup() -> str:
+    """
+    Copy toolkit.db to the cloud sync folder (/app/cloud_backup).
+    Returns the path of the file created.
+    """
+    _init_db()
+    CLOUD_BACKUP_PATH.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = CLOUD_BACKUP_PATH / f"toolkit_backup_{timestamp}.db"
+    shutil.copy2(DB_PATH, backup_file)
+    set_setting("last_cloud_backup_at", _now())
+    log.info("Cloud backup written to %s", backup_file)
+    return str(backup_file)
+
+
+def get_last_cloud_backup_at() -> str:
+    return get_setting("last_cloud_backup_at", "")
+
+
+# ---------------------------------------------------------------------------
 # Auto-backup on startup
 # ---------------------------------------------------------------------------
 

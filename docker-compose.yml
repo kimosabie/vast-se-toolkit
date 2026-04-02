@@ -11,10 +11,12 @@ services:
       - ./data:/app/data
       - ./templates:/app/templates:ro
       - ./images:/app/images:ro
+      - ${CLOUD_SYNC_DIR:-./data/cloud_backup}:/app/cloud_backup
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       - TOOLKIT_DB_PATH=/app/data/toolkit.db
+      - CLOUD_SYNC_DIR=${CLOUD_SYNC_DIR:-}
     env_file:
       - .env
     healthcheck:

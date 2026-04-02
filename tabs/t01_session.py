@@ -207,6 +207,46 @@ def render():
 
         st.caption(f"Current: {proj_id_label}")
 
+    # ── Cloud Backup ─────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### ☁️ Cloud Backup")
+
+    if not _DB_AVAILABLE:
+        st.warning("Database unavailable — cloud backup requires database access.")
+    else:
+        configured = _db.is_cloud_backup_configured()
+
+        if configured:
+            import os
+            sync_dir = os.environ.get("CLOUD_SYNC_DIR", "")
+            st.success(f"✅ Cloud sync folder configured: `{sync_dir}`")
+
+            last = _db.get_last_cloud_backup_at()
+            if last:
+                st.caption(f"Last cloud backup: {last[:16].replace('T', ' ')}")
+            else:
+                st.caption("No cloud backup taken yet this session.")
+
+            if st.button("☁️ Backup to Cloud Now", use_container_width=False):
+                try:
+                    path = _db.cloud_backup()
+                    st.success(f"✅ Backed up to cloud: `{path}`")
+                except Exception as e:
+                    st.error(f"Cloud backup failed: {e}")
+        else:
+            st.info(
+                "Cloud backup is not configured. "
+                "Set `CLOUD_SYNC_DIR` in your `.env` file to point to your "
+                "Google Drive or OneDrive folder, then restart the app.\n\n"
+                "**Examples:**\n\n"
+                "| Platform | Example path |\n"
+                "|----------|--------------|\n"
+                "| Windows (WSL2) — Google Drive | `/mnt/c/Users/yourname/Google Drive/My Drive/VAST Backups` |\n"
+                "| Windows (WSL2) — OneDrive | `/mnt/c/Users/yourname/OneDrive/VAST Backups` |\n"
+                "| macOS — Google Drive | `/Users/yourname/Library/CloudStorage/GoogleDrive-you@email.com/My Drive/VAST Backups` |\n"
+                "| macOS — OneDrive | `/Users/yourname/Library/CloudStorage/OneDrive-Personal/VAST Backups` |\n"
+            )
+
 
 
 
