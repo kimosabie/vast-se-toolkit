@@ -375,24 +375,15 @@ Generated config filenames:
 
 1. **Rack diagram — device name labels** — removed because overlaid text and external column both had layout issues. Options to revisit: hover tooltips (JS in iframe), separate legend panel, or clickable blocks.
 
-2. **Multi-rack layout** — current auto-distribution overlaps devices. Planned redesign:
-   - Max 3 racks
-   - SE manually assigns each device group to a rack (dropdown: Rack 1 / 2 / 3) + starting RU
-   - Pre-placement summary shows total U/weight/power before placement
-   - 1 leaf pair auto-suggested per rack, spine pair in Rack 1 only
-   - Tab 7 needs "Number of Leaf Pairs" input (1–3) — each pair gets its own IP/VLAN config and generates its own A+B config files
-
-3. **Tab 7 multi-leaf-pair switch config** — currently only generates one leaf pair. Multi-rack installs need multiple leaf pairs. This is a significant Tab 7 rework.
-
 ## Roadmap
 
-| Feature | Notes |
-|---------|-------|
-| Rack diagram name labels | Deferred — see known bugs above |
-| Multi-rack redesign | Max 3 racks, manual placement, weight/power pre-check |
-| Multi-leaf-pair switch config | 1–3 leaf pairs, each with own IP/VLAN/NTP, own config files |
-| Google Drive / OneDrive backup | Copy toolkit.db to sync folder |
-| KB tab | Curated VAST links, searchable |
-| LLM integration | Config reviewer, troubleshooting, natural language queries |
-| Desktop launcher (.ps1 / .command) | Already built, needs testing |
-| High level diagram tab | Visual topology diagram of the cluster (CNodes, DBoxes, switches, uplinks) |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Multi-rack redesign | ✅ Done | Max 3 racks, manual placement, weight/power pre-check |
+| Multi-leaf-pair switch config | ✅ Done | Balanced with multi-rack implementation |
+| High-level topology diagram | ✅ Done | Visual cluster diagram tab |
+| Desktop launcher (.ps1 / .command) | ✅ Done | Tested on Windows and macOS |
+| Google Drive / OneDrive backup | 🔲 Next | Copy toolkit.db to sync folder |
+| KB tab | 🔲 Next | Curated VAST links, searchable |
+| LLM integration | 🔲 Backlog | Config reviewer, troubleshooting, natural language queries |
+| Rack diagram name labels | 🔲 Backlog | Deferred — hover tooltips or legend panel |
