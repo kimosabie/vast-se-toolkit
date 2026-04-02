@@ -33,6 +33,7 @@ st.set_page_config(
 st.logo(
     "/app/images/vast_logo_wide.png",
     icon_image="/app/images/vast_logo_icon.png",
+    size="large",
 )
 
 # ============================================================
