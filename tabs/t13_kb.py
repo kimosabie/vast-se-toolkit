@@ -60,7 +60,7 @@ KB_LINKS = [
 
 
 def render():
-    st.subheader("📖 Knowledge Base")
+    st.subheader("📖 Resources")
     st.caption("Curated VAST resources for Systems Engineers.")
 
     st.markdown("---")
