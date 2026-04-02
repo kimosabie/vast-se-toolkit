@@ -35,6 +35,18 @@ st.logo(
     icon_image="/app/images/vast_logo_icon.png",
     size="large",
 )
+st.markdown("""
+<style>
+[data-testid="stLogo"],
+[data-testid="stSidebarHeader"] img,
+[data-testid="stSidebarHeader"] [data-testid="stLogo"],
+div[class*="logo"] img {
+    height: 12rem !important;
+    max-height: 12rem !important;
+    width: auto !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================================
 # HARDWARE PROFILES & HELPERS  (extracted to config.py / helpers/)
