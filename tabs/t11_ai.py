@@ -179,6 +179,23 @@ def _call_openai(api_key: str, messages: list) -> str:
     return response.choices[0].message.content
 
 
+def _call_gemini(api_key: str, messages: list) -> str:
+    import google.generativeai as genai
+    genai.configure(api_key=api_key)
+    system_msg = next((m["content"] for m in messages if m["role"] == "system"), "")
+    chat_msgs  = [m for m in messages if m["role"] != "system"]
+    # Gemini uses "model" instead of "assistant" for history roles
+    history = [
+        {"role": "user" if m["role"] == "user" else "model", "parts": [m["content"]]}
+        for m in chat_msgs[:-1]
+    ]
+    last_msg = chat_msgs[-1]["content"] if chat_msgs else ""
+    model = genai.GenerativeModel("gemini-1.5-pro", system_instruction=system_msg)
+    chat  = model.start_chat(history=history)
+    response = chat.send_message(last_msg)
+    return response.text
+
+
 # ---------------------------------------------------------------------------
 # Key management UI (rendered inside an expander)
 # ---------------------------------------------------------------------------
@@ -194,6 +211,7 @@ def _render_key_manager():
         for label, env_var, db_key in [
             ("Anthropic (Claude)", "CLAUDE_API_KEY",  "claude_api_key"),
             ("OpenAI",             "OPENAI_API_KEY",  "openai_api_key"),
+            ("Google Gemini",      "GEMINI_API_KEY",  "gemini_api_key"),
         ]:
             st.markdown(f"**{label}**")
             key_val, key_src = _resolve_key(env_var, db_key)
@@ -346,12 +364,15 @@ def render():
 
         _claude_key,  _claude_src  = _resolve_key("CLAUDE_API_KEY",  "claude_api_key")
         _openai_key,  _openai_src  = _resolve_key("OPENAI_API_KEY",  "openai_api_key")
+        _gemini_key,  _gemini_src  = _resolve_key("GEMINI_API_KEY",  "gemini_api_key")
 
         _providers = []
         if _claude_key:
             _providers.append("Claude (Anthropic)")
         if _openai_key:
             _providers.append("GPT-4o (OpenAI)")
+        if _gemini_key:
+            _providers.append("Gemini (Google)")
 
         if not _providers:
             st.info(
@@ -387,6 +408,8 @@ def render():
                 def _expert_call(messages):
                     if _provider == "Claude (Anthropic)":
                         return _call_claude(_claude_key, messages)
+                    if _provider == "Gemini (Google)":
+                        return _call_gemini(_gemini_key, messages)
                     return _call_openai(_openai_key, messages)
 
                 _render_chat(
