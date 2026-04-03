@@ -383,7 +383,7 @@ Generated config filenames:
 | Multi-leaf-pair switch config | ✅ Done | Balanced with multi-rack implementation |
 | High-level topology diagram | ✅ Done | Visual cluster diagram tab |
 | Desktop launcher (.ps1 / .command) | ✅ Done | Tested on Windows and macOS |
-| Google Drive / OneDrive backup | 🔲 Next | Copy toolkit.db to sync folder |
+| Google Drive backup | 🔲 Next | Copy toolkit.db to sync folder |
 | KB / Resources tab | ✅ Done | Curated VAST links, searchable, renamed to Resources |
 | LLM integration | 🔲 Backlog | Config reviewer, troubleshooting, natural language queries |
 | Rack diagram name labels | 🔲 Backlog | Deferred — hover tooltips or legend panel |

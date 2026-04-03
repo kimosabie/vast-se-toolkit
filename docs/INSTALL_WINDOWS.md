@@ -203,6 +203,55 @@ The icon will appear in your taskbar. Click it anytime to start the toolkit and 
 
 ---
 
+## Step 9 — Enable Google Drive backup *(optional but recommended)*
+
+The toolkit can automatically back up your project database to Google Drive so your work is safe across machines.
+
+**Requirement:** Google Drive Desktop must be installed and set to **Mirror files** mode (not Stream files). Mirror mode keeps a real copy of your files on disk so WSL2 can reach them.
+
+### Switch Google Drive Desktop to Mirror mode
+
+1. Click the Google Drive icon in your system tray (bottom-right)
+2. Click the gear icon → **Preferences**
+3. On the left, click **Google Drive**
+4. Switch from **Stream files** to **Mirror files**
+5. Note the folder path shown (usually `C:\Users\yourname\My Drive`) — click **Save**
+
+### Find your path in WSL2
+
+Open your Ubuntu terminal and run (replace `yourname` with your Windows username):
+
+```bash
+ls "/mnt/c/Users/yourname/My Drive/"
+```
+
+If you see your Drive contents listed, the path is correct.
+
+### Configure the .env file
+
+In Ubuntu, open the `.env` file in the project folder:
+
+```bash
+nano ~/projects/vast-se-toolkit/.env
+```
+
+Uncomment and set `CLOUD_SYNC_DIR` to your path:
+
+```
+CLOUD_SYNC_DIR=/mnt/c/Users/yourname/My Drive/VAST Backups
+```
+
+Save with `Ctrl+O`, then `Ctrl+X` to exit. Then restart the app:
+
+```bash
+cd ~/projects/vast-se-toolkit
+docker compose restart
+```
+
+The **Session** tab will now show a **☁️ Cloud Backup** section. The `VAST Backups` folder will be created automatically on first backup.
+
+---
+
 ## Closing the app
 
 **Just close the browser tab — that's it.** The app keeps running in the background, ready for next time.

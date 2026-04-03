@@ -237,14 +237,12 @@ def render():
             st.info(
                 "Cloud backup is not configured. "
                 "Set `CLOUD_SYNC_DIR` in your `.env` file to point to your "
-                "Google Drive or OneDrive folder, then restart the app.\n\n"
+                "local Google Drive folder, then restart the app.\n\n"
                 "**Examples:**\n\n"
                 "| Platform | Example path |\n"
                 "|----------|--------------|\n"
-                "| Windows (WSL2) — Google Drive | `/mnt/c/Users/yourname/Google Drive/My Drive/VAST Backups` |\n"
-                "| Windows (WSL2) — OneDrive | `/mnt/c/Users/yourname/OneDrive/VAST Backups` |\n"
-                "| macOS — Google Drive | `/Users/yourname/Library/CloudStorage/GoogleDrive-you@email.com/My Drive/VAST Backups` |\n"
-                "| macOS — OneDrive | `/Users/yourname/Library/CloudStorage/OneDrive-Personal/VAST Backups` |\n"
+                "| Windows (WSL2) | `/mnt/c/Users/yourname/Google Drive/My Drive/VAST Backups` |\n"
+                "| macOS | `/Users/yourname/Library/CloudStorage/GoogleDrive-you@email.com/My Drive/VAST Backups` |\n"
             )
 
 

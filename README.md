@@ -140,7 +140,7 @@ Your saved projects and generated configs are never affected by updates.
 - [ ] Multi-rack redesign (manual placement, max 3 racks, weight/power pre-check)
 - [ ] Multi-leaf-pair switch config (1–3 leaf pairs per install)
 - [ ] High-level topology diagram (CNodes, DBoxes, switches, uplinks)
-- [ ] Google Drive / OneDrive auto-backup
+- [ ] Google Drive auto-backup
 - [ ] KB tab (curated VAST links, searchable)
 
 ---

@@ -447,7 +447,7 @@ def list_backups(backup_dir: str = None) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Cloud backup (Google Drive / OneDrive)
+# Cloud backup (Google Drive)
 # ---------------------------------------------------------------------------
 
 CLOUD_BACKUP_PATH = Path("/app/cloud_backup")

@@ -150,6 +150,59 @@ macOS will block the script the first time:
 
 ---
 
+## Step 8 — Enable Google Drive backup *(optional but recommended)*
+
+The toolkit can automatically back up your project database to Google Drive so your work is safe across machines.
+
+**Requirement:** Google Drive Desktop must be installed and set to **Mirror files** mode (not Stream files). Mirror mode keeps a real copy of your files on disk so the app can reach them.
+
+### Switch Google Drive Desktop to Mirror mode
+
+1. Click the Google Drive icon in your menu bar
+2. Click the gear icon → **Preferences**
+3. On the left, click **Google Drive**
+4. Switch from **Stream files** to **Mirror files** and click **Save**
+
+Google Drive Desktop mirrors your files to:
+```
+/Users/yourname/Library/CloudStorage/GoogleDrive-you@company.com/My Drive/
+```
+
+### Verify the path
+
+Open Terminal and run (replace with your actual username and Google account email):
+
+```bash
+ls ~/Library/CloudStorage/
+```
+
+You'll see a folder like `GoogleDrive-you@vast.com` — note the exact name.
+
+### Configure the .env file
+
+Open the `.env` file in the project folder:
+
+```bash
+nano ~/projects/vast-se-toolkit/.env
+```
+
+Uncomment and set `CLOUD_SYNC_DIR`:
+
+```
+CLOUD_SYNC_DIR=/Users/yourname/Library/CloudStorage/GoogleDrive-you@vast.com/My Drive/VAST Backups
+```
+
+Save with `Ctrl+O`, then `Ctrl+X` to exit. Then restart the app:
+
+```bash
+cd ~/projects/vast-se-toolkit
+docker compose restart
+```
+
+The **Session** tab will now show a **☁️ Cloud Backup** section. The `VAST Backups` folder will be created automatically on first backup.
+
+---
+
 ## Closing the app
 
 **Just close the browser tab — that's it.** The app keeps running in the background, ready for next time.
