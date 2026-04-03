@@ -1,7 +1,6 @@
 import streamlit as st
-from datetime import date
-from config import HARDWARE_PROFILES
-from helpers.context import get_ctx
+from datetime import date, datetime as _dt
+from helpers.context import get_ctx, get_switch_ctx
 from helpers.port_logic import get_sw_suffix
 
 
@@ -54,62 +53,56 @@ def render():
         p_ip_notes     = st.session_state.get("proj_ip_notes",      "")
         p_site_notes   = st.session_state.get("proj_site_notes",    "")
 
-        # ── Pull session data from other tabs ───────────────────────
-        t1_sw_model    = st.session_state.get("tab7_sw_model",      list(HARDWARE_PROFILES.keys())[0])
-        t1_profile     = HARDWARE_PROFILES[t1_sw_model]
-        t1_sw_a_ip     = st.session_state.get("tab7_sw_a_ip",       "192.168.1.1/24")
-        t1_sw_b_ip     = st.session_state.get("tab7_sw_b_ip",       "192.168.1.2/24")
-        t1_mgmt_gw     = st.session_state.get("tab7_gw",            "192.168.1.254")
-        t1_ntp         = st.session_state.get("tab7_ntp",           "")
-        t1_vlan        = st.session_state.get("tab7_vlan",          100)
-        t1_isl         = st.session_state.get("tab7_isl",           "")
-        t1_uplink      = st.session_state.get("tab7_uplink",        "")
-        t1_dnode_start = int(st.session_state.get("tab7_dnode_start", 1))
-        t1_cnode_start = int(st.session_state.get("tab7_cnode_start", 15))
-
-        t2_enabled     = st.session_state.get("tab8_enabled",       False)
-        t2_sw_a_ip     = st.session_state.get("tab8_sw_a_ip",       "192.168.2.1/24")
-        t2_sw_b_ip     = st.session_state.get("tab8_sw_b_ip",       "192.168.2.2/24")
-        t2_sw_model    = st.session_state.get("tab8_sw_model",      list(HARDWARE_PROFILES.keys())[0])
-
+        # ── Pull switch state (shared with t05_preflight) ───────────
+        sw = get_switch_ctx(pfx)
+        t1_sw_model    = sw["sw_model"]
+        t1_profile     = sw["profile"]
+        t1_sw_a_ip     = sw["sw_a_ip"]
+        t1_sw_b_ip     = sw["sw_b_ip"]
+        t1_mgmt_gw     = sw["mgmt_gw"]
+        t1_ntp         = sw["ntp"]
+        t1_vlan        = sw["vlan"]
+        t1_isl         = sw["isl"]
+        t1_uplink      = sw["uplink"]
+        t1_dnode_start = sw["dnode_start"]
+        t1_cnode_start = sw["cnode_start"]
+        t2_enabled     = sw["gpu_enabled"]
+        t2_sw_a_ip     = sw["gpu_sw_a_ip"]
+        t2_sw_b_ip     = sw["gpu_sw_b_ip"]
+        t2_sw_model    = sw["gpu_model"]
+        t2_profile     = sw["gpu_profile"]
+        sp_model       = sw["spine_model"]
+        sp_profile     = sw["spine_profile"]
+        sp_a_ip        = sw["spine_a_ip"]
+        sp_b_ip        = sw["spine_b_ip"]
+        sw_a_ip_only   = sw["sw_a_ip_only"]
+        sw_b_ip_only   = sw["sw_b_ip_only"]
+        cidr           = sw["cidr"]
+        t2_a_ip_only   = sw["gpu_a_ip_only"]
+        t2_b_ip_only   = sw["gpu_b_ip_only"]
+        sp_a_ip_only   = sw["spine_a_ip_only"]
+        sp_b_ip_only   = sw["spine_b_ip_only"]
+        vendor_up      = sw["vendor_up"]
+        today_str      = sw["today_str"]
+        fname_sw_a     = sw["fname_sw_a"]
+        fname_sw_b     = sw["fname_sw_b"]
+        fname_gpu_a    = sw["fname_gpu_a"]
+        fname_gpu_b    = sw["fname_gpu_b"]
+        fname_sp_a     = sw["fname_sp_a"]
+        fname_sp_b     = sw["fname_sp_b"]
+        sp_vsuf        = get_sw_suffix(sp_model)
         spine_en       = (topology == "Spine-Leaf")
-        sp_a_ip        = st.session_state.get("spine_a_ip",         "192.168.3.1/24")
-        sp_b_ip        = st.session_state.get("spine_b_ip",         "192.168.3.2/24")
-        sp_model       = st.session_state.get("spine_sw_model",     list(HARDWARE_PROFILES.keys())[0])
-        sp_ntp         = st.session_state.get("spine_ntp",          "")
 
-        # ── Derived values ──────────────────────────────────────────
-        sw_a_ip_only   = t1_sw_a_ip.split("/")[0]
-        sw_b_ip_only   = t1_sw_b_ip.split("/")[0]
-        cidr           = t1_sw_a_ip.split("/")[1] if "/" in t1_sw_a_ip else "24"
-        t2_a_ip_only   = t2_sw_a_ip.split("/")[0]
-        t2_b_ip_only   = t2_sw_b_ip.split("/")[0]
-        sp_a_ip_only   = sp_a_ip.split("/")[0]
-        sp_b_ip_only   = sp_b_ip.split("/")[0]
-
-        today_str      = date.today().isoformat()
         _id = install_date
         if isinstance(_id, str):
             try:
-                from datetime import datetime as _dt2
-                _id = _dt2.strptime(_id, "%Y-%m-%d").date()
+                _id = _dt.strptime(_id, "%Y-%m-%d").date()
             except Exception:
                 _id = date.today()
         today_nice     = _id.strftime("%d %B %Y")
-        vendor_up      = t1_profile["vendor"].upper()
-        t2_profile     = HARDWARE_PROFILES[t2_sw_model]
-        sp_profile     = HARDWARE_PROFILES[sp_model]
-        sp_vsuf        = get_sw_suffix(sp_model)
 
-        fname_sw_a     = f"{pfx}_VAST_SWA_{vendor_up}_{today_str}.txt"
-        fname_sw_b     = f"{pfx}_VAST_SWB_{vendor_up}_{today_str}.txt"
-        fname_gpu_a    = f"{pfx}_VAST_GPU_SWA_{t2_profile['vendor'].upper()}_{today_str}.txt"
-        fname_gpu_b    = f"{pfx}_VAST_GPU_SWB_{t2_profile['vendor'].upper()}_{today_str}.txt"
-        fname_sp_a     = f"{pfx}_VAST_SPINE_A_{sp_profile['vendor'].upper()}_{today_str}.txt"
-        fname_sp_b     = f"{pfx}_VAST_SPINE_B_{sp_profile['vendor'].upper()}_{today_str}.txt"
-
-        isl_ports      = [p.strip() for p in t1_isl.split(",") if p.strip()]
-        uplink_ports   = [p.strip() for p in t1_uplink.split(",") if p.strip()]
+        isl_ports      = sw["isl_list"]
+        uplink_ports   = sw["uplink_list"]
 
         # Node port ranges for documentation
         dnode_end      = t1_dnode_start + (num_dboxes * 2) - 1

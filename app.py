@@ -1,5 +1,4 @@
 import streamlit as st
-from jinja2 import Environment, FileSystemLoader
 from datetime import date
 import sys
 import os
@@ -10,17 +9,6 @@ try:
     _DB_AVAILABLE = True
 except Exception as _db_import_err:
     _DB_AVAILABLE = False
-
-_INV_CACHE_KEY = "_inv_devices_cache"
-
-def _get_inventory_cached():
-    """Return cached inventory list. Call _inv_cache_invalidate() after any write."""
-    if _INV_CACHE_KEY not in st.session_state:
-        st.session_state[_INV_CACHE_KEY] = _db.list_inventory_devices() if _DB_AVAILABLE else []
-    return st.session_state[_INV_CACHE_KEY]
-
-def _inv_cache_invalidate():
-    st.session_state.pop(_INV_CACHE_KEY, None)
 
 # ============================================================
 # APP CONFIG
@@ -48,21 +36,7 @@ div[class*="logo"] img {
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# HARDWARE PROFILES & HELPERS  (extracted to config.py / helpers/)
-# ============================================================
-from config import (
-    HARDWARE_PROFILES, SPEED_RANK, DBOX_PROFILES, CNODE_PERF,
-    DEVICE_SPECS, DEVICE_IMAGES, DEVICE_IMAGE_MAP, DR_ESTIMATES,
-)
-from helpers.images import _get_device_img_b64, _strip_white_bg
-from helpers.svg_export import (
-    _svg_to_pdf_cached, _svg_to_jpg_cached,
-    _build_multipage_pdf, _build_consolidated_pdf,
-)
-from helpers.port_logic import (
-    get_sw_suffix, get_port_mappings, validate_port_counts, render_cable_summary,
-)
+from config import APP_VERSION
 from helpers.state import (
     _is_saveable, _SAVEABLE_EXACT, _SKIP_EXACT, _SKIP_PREFIXES,
 )
@@ -231,40 +205,10 @@ with st.sidebar:
         st.markdown("🔴 Offline")
 
     st.markdown("---")
-    st.caption("⚡ VAST SE Toolkit v1.2.0")
+    st.caption(f"⚡ VAST SE Toolkit v{APP_VERSION}")
     st.caption(f"📅 {date.today().strftime('%d %B %Y')}")
 
 
-
-# ── Always-available derived values ─────────────────────────
-# These read from session_state with safe defaults so that
-# ============================================================
-# DERIVED VALUES  (computed once per render from session state)
-# ============================================================
-from helpers.context import get_ctx, build_sw_name
-_ctx         = get_ctx()
-pfx          = _ctx["pfx"]
-num_dboxes   = _ctx["num_dboxes"]
-num_cnodes   = _ctx["num_cnodes"]
-topology     = _ctx["topology"]
-include_ru   = _ctx["include_ru"]
-dbox_label   = _ctx["dbox_label"]
-dnode_label  = _ctx["dnode_label"]
-cnode_label  = _ctx["cnode_label"]
-dbox_ru_list = _ctx["dbox_ru_list"]
-cnode_ru_list= _ctx["cnode_ru_list"]
-sw1_ru       = _ctx["sw1_ru"]
-sw2_ru       = _ctx["sw2_ru"]
-vendor_suffix= _ctx["vendor_suffix"]
-se_name      = _ctx["se_name"]
-customer     = _ctx["customer"]
-cluster_name = _ctx["cluster_name"]
-install_date = _ctx["install_date"]
-full_sw_a    = _ctx["full_sw_a"]
-full_sw_b    = _ctx["full_sw_b"]
-
-def _build_sw_name(sw_num, ru_val, vendor_sfx, gpu=False, spine=False):
-    return build_sw_name(sw_num, ru_val, vendor_sfx, pfx, include_ru, gpu, spine)
 
 # ============================================================
 # MAIN HEADER

@@ -14,8 +14,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-
-APP_VERSION = "1.0.0"
+from config import APP_VERSION
 DB_PATH = Path(os.environ.get("TOOLKIT_DB_PATH", "/app/data/toolkit.db"))
 
 log = logging.getLogger(__name__)

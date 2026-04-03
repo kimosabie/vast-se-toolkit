@@ -1,6 +1,8 @@
 # Hardware profiles and static configuration data
 # Auto-extracted from app.py — edit here, not in app.py
 
+APP_VERSION = "1.2.0"
+
 # ============================================================
 # HARDWARE PROFILES
 # ============================================================

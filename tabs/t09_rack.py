@@ -7,20 +7,7 @@ from helpers.svg_export import (
     _svg_to_pdf_cached, _svg_to_jpg_cached,
     _build_multipage_pdf, _build_consolidated_pdf,
 )
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-try:
-    import db as _db
-    _DB_AVAILABLE = True
-except Exception:
-    _DB_AVAILABLE = False
-
-_INV_CACHE_KEY = "_inv_devices_cache"
-
-def _get_inventory_cached():
-    if _INV_CACHE_KEY not in st.session_state:
-        st.session_state[_INV_CACHE_KEY] = _db.list_inventory_devices() if _DB_AVAILABLE else []
-    return st.session_state[_INV_CACHE_KEY]
+from helpers.inventory import get_inventory_cached as _get_inventory_cached
 
 
 def render():

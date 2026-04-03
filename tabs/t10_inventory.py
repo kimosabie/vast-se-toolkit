@@ -8,15 +8,8 @@ try:
 except Exception:
     _DB_AVAILABLE = False
 
-_INV_CACHE_KEY = "_inv_devices_cache"
-
-def _get_inventory_cached():
-    if _INV_CACHE_KEY not in st.session_state:
-        st.session_state[_INV_CACHE_KEY] = _db.list_inventory_devices() if _DB_AVAILABLE else []
-    return st.session_state[_INV_CACHE_KEY]
-
-def _inv_cache_invalidate():
-    st.session_state.pop(_INV_CACHE_KEY, None)
+from helpers.inventory import get_inventory_cached as _get_inventory_cached
+from helpers.inventory import inv_cache_invalidate as _inv_cache_invalidate
 
 
 def render():
