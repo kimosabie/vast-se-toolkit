@@ -64,12 +64,35 @@ print('Done')
 
 ## Architecture
 
-**`app.py`** (~4500 lines) is the monolithic entry point containing all UI, business logic, hardware profiles, and template rendering. There is no separate routes/controllers layer.
+**`app.py`** (~320 lines) is a thin orchestrator — page config, session state handlers, sidebar, derived values block, tab creation, and calls to each tab's `render()` function. Business logic lives in `helpers/` and `tabs/`.
+
+**`config.py`** — all static hardware data: `HARDWARE_PROFILES`, `DBOX_PROFILES`, `CNODE_PERF`, `DEVICE_SPECS`, `DEVICE_IMAGES`. Edit here to add/change switch models, DBox specs, or performance numbers.
 
 **`db.py`** manages a SQLite database (`data/toolkit.db`) with three tables:
 - `projects` — project metadata with soft deletes (`is_deleted=1`)
 - `project_versions` — full JSON snapshots of Streamlit session state per save
 - `settings` — key/value store (backup location, last backup timestamp)
+
+**`helpers/`** — shared utilities:
+- `context.py` — `get_ctx()` returns a dict of all derived session-state values; `build_sw_name()`
+- `images.py` — `_get_device_img_b64()`, `_strip_white_bg()`
+- `port_logic.py` — `get_port_mappings()`, `validate_port_counts()`, `render_cable_summary()`
+- `state.py` — `_is_saveable()` key filter for save/load
+- `svg_export.py` — PDF/JPG export helpers
+
+**`tabs/`** — one file per tab, each exports `render()`:
+- `t01_session.py` — Session (SE identity, save/load/new project)
+- `t02_sizer.py` — Capacity & Performance Sizer
+- `t03_project.py` — Project Details
+- `t04_confluence.py` — Confluence Install Plan
+- `t05_preflight.py` — Pre-Flight, Validation & Installation
+- `t07_switch.py` — Internal Switch — Southbound
+- `t08_data_switch.py` — Data Switch — Northbound
+- `t09_rack.py` — Rack Diagram
+- `t10_inventory.py` — Device Inventory
+- `t11_ai.py` — AI Assistant (Ollama + cloud Expert)
+- `t12_network.py` — Network Diagram
+- `t13_kb.py` — Resources
 
 **`templates/`** — Jinja2 templates rendered by app.py:
 - `cumulus_nv.j2` / `cumulus_spine.j2` — NVIDIA Cumulus NV leaf/spine configs
@@ -81,15 +104,36 @@ print('Done')
 
 ```
 ~/projects/vast-se-toolkit/
-├── app.py                    ← main application (~4,500 lines)
+├── app.py                    ← orchestrator (~320 lines)
+├── config.py                 ← all hardware profiles and static data
 ├── db.py                     ← SQLite project database module
 ├── Dockerfile
 ├── docker-compose.yml        ← mounts outputs/, data/, templates/, images/
 ├── requirements.txt
+├── setup.sh                  ← one-time setup script
 ├── .env                      ← empty, required by docker-compose
 ├── .gitignore
 ├── INSTALL.md
 ├── README.md
+├── helpers/
+│   ├── context.py            ← get_ctx(), build_sw_name()
+│   ├── images.py             ← device image loading
+│   ├── port_logic.py         ← port mapping and cable logic
+│   ├── state.py              ← _is_saveable() key filter
+│   └── svg_export.py         ← PDF/JPG export
+├── tabs/                     ← one file per tab, each exports render()
+│   ├── t01_session.py
+│   ├── t02_sizer.py
+│   ├── t03_project.py
+│   ├── t04_confluence.py
+│   ├── t05_preflight.py
+│   ├── t07_switch.py
+│   ├── t08_data_switch.py
+│   ├── t09_rack.py
+│   ├── t10_inventory.py
+│   ├── t11_ai.py
+│   ├── t12_network.py
+│   └── t13_kb.py
 ├── templates/
 │   ├── cumulus_nv.j2         ← internal fabric leaf switch config (Cumulus)
 │   ├── arista_eos.j2         ← internal fabric leaf switch config (Arista EOS)
@@ -119,7 +163,7 @@ print('Done')
     └── toolkit.db            ← SQLite project database
 ```
 
-## UI Structure (10 Tabs in app.py)
+## UI Structure (12 Tabs in app.py)
 
 | Position | Variable | Name | Content |
 |----------|----------|------|---------|
@@ -129,19 +173,27 @@ print('Done')
 | 4 | tab7 | Internal Switch — Southbound | Cumulus NV + Arista EOS config generation, port mapping, cable guide |
 | 5 | tab8 | Data Switch — Northbound | GPU/data network switch config (optional, toggle-enabled) |
 | 6 | tab9 | Rack Diagram | Visual rack diagram, power/weight analysis, PDF/JPG export (A4/A3 landscape) |
-| 7 | tab10 | Device Inventory | Custom device library for rack diagram |
-| 8 | tab11 | AI Assistant | Local LLM (Ollama) config reviewer and troubleshooting |
+| 7 | tab12 | Network Diagram | High-level layered topology SVG — CNodes, DBoxes, switches, uplinks |
+| 8 | tab10 | Device Inventory | Custom device library for rack diagram |
 | 9 | tab5 | Pre-Flight, Validation & Installation | Equipment checklist, port count, cable labels, LLDP script, pre-flight checklist, per-switch installation procedure (§1–§12) |
 | 10 | tab4 | Confluence Install Plan | Auto-generated full install plan in markdown |
+| 11 | tab11 | AI Assistant | Project Assistant (local Ollama) + Technical Expert (Claude / GPT-4o / Gemini via API key) |
+| 12 | tab13 | Resources | Curated VAST links — Knowledge Base, Field Resources, searchable |
 
-**Important — variable names vs positions:** Tab variable names (`tab1`–`tab11`, with `tab6` retired after the merge) do **not** match their UI position numbers. The `st.tabs()` unpacking at line ~911 assigns positions. When adding code to a tab, use `with tabX:` where X is the variable from the table above, not the position number.
+**Important — variable names vs positions:** Tab variable names do **not** match their UI position numbers. The `st.tabs()` unpacking at line ~294 in app.py assigns positions. When adding code to a tab, use `with tabX:` where X is the variable from the table above, not the position number.
 
-## Key Functions in app.py
+## Key Functions (by module)
 
+**`helpers/port_logic.py`**
 - `get_port_mappings()` — calculates port allocations for DBoxes/CNodes given topology
 - `validate_port_counts()` — checks feasibility of the config (ports available vs. required)
 - `render_cable_summary()` — generates the cable requirements table
-- `_build_sw_name()` — constructs switch hostnames incorporating RU position
+
+**`helpers/context.py`**
+- `get_ctx()` — returns dict of all derived session-state values; called at top of each tab's `render()`
+- `build_sw_name()` — constructs switch hostnames incorporating RU position
+
+**`helpers/images.py`**
 - `_get_device_img_b64()` — loads device PNGs from `images/` as base64
 
 ## Streamlit 1.32 Session State — Critical Patterns
@@ -232,7 +284,7 @@ install_date = st.session_state.get("install_date", str(date.today()))
 
 ## Hardware Profiles
 
-Hardware specs (port counts, connector types, cable vendors, ISL/uplink ranges) are defined as dicts embedded directly in `app.py`.
+Hardware specs (port counts, connector types, cable vendors, ISL/uplink ranges) are defined in `config.py`.
 
 ### Switch models (HARDWARE_PROFILES dict)
 
@@ -381,9 +433,9 @@ Generated config filenames:
 |---------|--------|-------|
 | Multi-rack redesign | ✅ Done | Max 3 racks, manual placement, weight/power pre-check |
 | Multi-leaf-pair switch config | ✅ Done | Balanced with multi-rack implementation |
-| High-level topology diagram | ✅ Done | Visual cluster diagram tab |
+| High-level topology diagram | ✅ Done | Network Diagram tab (t12_network.py) |
 | Desktop launcher (.ps1 / .command) | ✅ Done | Tested on Windows and macOS |
+| KB / Resources tab | ✅ Done | Curated VAST links, searchable (t13_kb.py) |
+| AI Assistant | ✅ Done | Local Ollama (Project Assistant) + cloud Expert (Claude / GPT-4o / Gemini) |
 | Google Drive backup | 🔲 Next | Copy toolkit.db to sync folder |
-| KB / Resources tab | ✅ Done | Curated VAST links, searchable, renamed to Resources |
-| LLM integration | 🔲 Backlog | Config reviewer, troubleshooting, natural language queries |
 | Rack diagram name labels | 🔲 Backlog | Deferred — hover tooltips or legend panel |

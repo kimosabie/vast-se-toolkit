@@ -3,7 +3,7 @@
 A Dockerised Streamlit web app for VAST Systems Engineers.
 Automates switch config generation, port mapping, cable labelling, pre-flight validation, rack diagrams, and Confluence install plan generation for VAST cluster installations.
 
-**Runs locally on your laptop. No cloud. No login.**
+**Runs locally on your laptop. No login required. Optional cloud AI keys for the Technical Expert assistant.**
 
 ---
 
@@ -33,9 +33,11 @@ See [INSTALL.md](INSTALL.md) for full setup instructions including desktop launc
 | 🖥️ Data Switch — Northbound | GPU/data network switch config (optional, toggle-enabled) |
 | 📐 Rack Diagram | Visual rack layout, power/weight analysis, PDF/JPG export (A4/A3 landscape) |
 | 📦 Device Inventory | Custom device library for rack diagram |
-| 🤖 AI Assistant | Local LLM (Ollama) config reviewer and troubleshooting assistant |
+| 🗺️ Network Diagram | High-level visual topology diagram — CNodes, DBoxes, switches, uplinks |
+| 🤖 AI Assistant | **Project Assistant** (local Ollama, no internet) + **Technical Expert** (Claude / GPT-4o / Gemini via API key) |
 | ✅ Pre-Flight, Validation & Installation | Equipment checklist, port count validation, cable labels, LLDP script, pre-flight checklist, per-switch step-by-step installation procedure |
 | 📄 Confluence Install Plan | Auto-generated full install plan — copy-paste to Confluence |
+| 📖 Resources | Curated VAST links — Knowledge Base, Field Resources, searchable |
 
 ---
 
@@ -137,11 +139,12 @@ Your saved projects and generated configs are never affected by updates.
 
 ## Roadmap
 
-- [ ] Multi-rack redesign (manual placement, max 3 racks, weight/power pre-check)
-- [ ] Multi-leaf-pair switch config (1–3 leaf pairs per install)
-- [ ] High-level topology diagram (CNodes, DBoxes, switches, uplinks)
+- [x] Multi-rack redesign (manual placement, max 3 racks, weight/power pre-check)
+- [x] Multi-leaf-pair switch config (1–3 leaf pairs per install)
+- [x] High-level topology diagram (CNodes, DBoxes, switches, uplinks)
+- [x] AI Assistant — local Ollama + cloud Technical Expert (Claude / GPT-4o / Gemini)
+- [x] Resources tab (curated VAST links, searchable)
 - [ ] Google Drive auto-backup
-- [ ] KB tab (curated VAST links, searchable)
 
 ---
 
