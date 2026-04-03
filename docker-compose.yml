@@ -12,16 +12,44 @@ services:
       - ./templates:/app/templates:ro
       - ./images:/app/images:ro
       - ${CLOUD_SYNC_DIR:-./data/cloud_backup}:/app/cloud_backup
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
       - TOOLKIT_DB_PATH=/app/data/toolkit.db
       - CLOUD_SYNC_DIR=${CLOUD_SYNC_DIR:-}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
     env_file:
       - .env
+    depends_on:
+      - ollama
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: vast-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: vast-ollama-init
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["ollama", "pull", "llama3.2:3b"]
+    restart: "no"
+
+volumes:
+  ollama_data:
