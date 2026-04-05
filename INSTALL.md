@@ -6,26 +6,12 @@ Welcome! This guide will get the VAST SE Toolkit running on your laptop in about
 
 ## Before you start
 
-You'll need three things:
+You'll need two things:
 
 | | What | Why |
 |--|------|-----|
 | 1 | **Docker Desktop** | Runs the app |
 | 2 | **Git** | Downloads the code |
-| 3 | **GitHub access** | The repo is private — request access from Kimo first |
-
----
-
-## Request access from Kimo
-
-Before installing anything, make sure Kimo has added you to the repo.
-
-1. Log in to [github.com](https://github.com) — your username is shown in the top-right corner
-2. Send Kimo a Slack message:
-   > *"Hi Kimo, can you add me to the VAST SE Toolkit repo? My GitHub username is: `your-username`"*
-3. You'll get an email from GitHub — open it and click **Accept invitation**
-
-> Don't skip this — the install will fail at the download step if you haven't accepted the invite.
 
 ---
 

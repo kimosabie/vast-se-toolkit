@@ -1,6 +1,6 @@
 # VAST SE Toolkit — Linux Install Guide
 
-> **Before you start:** Make sure Kimo has added you to the GitHub repo and you've accepted the invite. See [INSTALL.md](../INSTALL.md).
+> **Before you start:** You'll need Docker Engine and Git. See [INSTALL.md](../INSTALL.md).
 
 ---
 
@@ -52,74 +52,18 @@ git --version
 
 ---
 
-## Step 3 — Set up your SSH key for GitHub
-
-This is a one-time step so your machine can securely connect to GitHub.
-
-### Check if you already have a key
-
-```bash
-ls ~/.ssh/id_ed25519.pub
-```
-
-- If a file path is printed — you already have a key, **skip to step 3d**
-- If you see *"No such file or directory"* — continue to the next step
-
-### Generate a new key
-
-```bash
-ssh-keygen -t ed25519 -C "your-email@vast.com"
-```
-
-When prompted:
-- *"Enter file in which to save the key"* — press **Enter**
-- *"Enter passphrase"* — press **Enter**
-- *"Enter same passphrase again"* — press **Enter**
-
-### Copy your public key
-
-```bash
-cat ~/.ssh/id_ed25519.pub
-```
-
-This prints a long line starting with `ssh-ed25519 AAAA...` — **select the entire line and copy it**.
-
-### Add the key to GitHub
-
-1. Go to [github.com/settings/ssh/new](https://github.com/settings/ssh/new)
-2. **Title:** `My Linux Machine`
-3. **Key:** paste what you copied
-4. Click **Add SSH key**
-
-### Verify it works
-
-```bash
-ssh -T git@github.com
-```
-
-You should see:
-```
-Hi yourname! You've successfully authenticated...
-```
-
-> If you see *"Permission denied"* — check that you pasted the full key and saved it on GitHub.
-
----
-
-## Step 4 — Download the toolkit
+## Step 3 — Download the toolkit
 
 ```bash
 mkdir -p ~/projects
 cd ~/projects
-git clone git@github.com:kimosabie/vast-se-toolkit.git
+git clone https://github.com/kimosabie/vast-se-toolkit.git
 cd vast-se-toolkit
 ```
 
-> If you see *"Repository not found"* — the GitHub invite wasn't accepted yet. Go back to the [main guide](../INSTALL.md).
-
 ---
 
-## Step 5 — Run setup
+## Step 4 — Run setup
 
 ```bash
 ./setup.sh
@@ -137,7 +81,7 @@ When you see `=== Setup complete! ===` you're done.
 
 ---
 
-## Step 6 — Open the app
+## Step 5 — Open the app
 
 Open your browser and go to:
 
@@ -147,7 +91,7 @@ http://localhost:8501
 
 ---
 
-## Step 7 — Set up a Desktop launcher and pin to taskbar *(optional but recommended)*
+## Step 6 — Set up a Desktop launcher and pin to taskbar *(optional but recommended)*
 
 ### Create the launcher file
 
@@ -223,9 +167,8 @@ docker compose up -d
 - Start Docker: `sudo systemctl start docker`
 - If using Docker Desktop, open it from your app launcher
 
-**`git clone` says "Permission denied (publickey)"**
-- Redo Step 3 — your SSH key may not be saved to GitHub correctly
-- Confirm you accepted the GitHub invite
+**`git clone` fails**
+- Check your internet connection and try again
 
 **`docker compose` not found**
 - Make sure you installed `docker-compose-plugin` (Step 1)

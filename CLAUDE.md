@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 VAST SE Toolkit is a Dockerized Streamlit web application for VAST Systems Engineers to automate cluster installation workflows — generating switch configs, cable guides, pre-flight checklists, and Confluence install plans. It runs locally (Windows WSL2/macOS), requires no cloud login, and targets NVIDIA Cumulus NV and Arista EOS switches.
 
 **Stack:** Python 3.11 · Streamlit 1.32 · Jinja2 · SQLite · Docker Compose
-**Repo:** https://github.com/kimosabie/vast-se-toolkit (private)
+**Repo:** https://github.com/kimosabie/vast-se-toolkit (public)
 **Dev server:** vast-dev (Tailscale) — project at `~/projects/vast-se-toolkit/`
 **Access:** http://\<tailscale-ip\>:8501
 

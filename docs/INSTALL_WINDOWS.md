@@ -1,6 +1,6 @@
 # VAST SE Toolkit — Windows Install Guide
 
-> **Before you start:** Make sure Kimo has added you to the GitHub repo and you've accepted the invite. See [INSTALL.md](../INSTALL.md).
+> **Before you start:** You'll need Docker Desktop and Git. See [INSTALL.md](../INSTALL.md).
 
 The toolkit runs inside Docker using **WSL2** (Windows Subsystem for Linux). This gives you a real Linux environment on your Windows machine — it's fast, stable, and required for Docker to work properly.
 
@@ -61,73 +61,20 @@ You'll see a prompt like `yourname@LAPTOP:~$` — this is your Linux terminal.
 
 ---
 
-## Step 4 — Set up your SSH key for GitHub
-
-This is a one-time step so Ubuntu can connect to GitHub.
-
-### Check if you already have a key
-
-```bash
-ls ~/.ssh/id_ed25519.pub
-```
-
-- If a file path is printed — you already have a key, **skip to step 4d**
-- If you see *"No such file or directory"* — continue to the next step
-
-### Generate a new key
-
-```bash
-ssh-keygen -t ed25519 -C "your-email@vast.com"
-```
-
-When prompted:
-- *"Enter file in which to save the key"* — press **Enter**
-- *"Enter passphrase"* — press **Enter** twice
-
-### Copy your public key
-
-```bash
-cat ~/.ssh/id_ed25519.pub
-```
-
-This prints a long line starting with `ssh-ed25519 AAAA...` — **select the entire line and copy it**.
-
-### Add the key to GitHub
-
-1. Go to [github.com/settings/ssh/new](https://github.com/settings/ssh/new)
-2. **Title:** `My Work PC`
-3. **Key:** paste what you copied
-4. Click **Add SSH key**
-
-### Verify it works
-
-```bash
-ssh -T git@github.com
-```
-
-You should see:
-```
-Hi yourname! You've successfully authenticated...
-```
-
----
-
-## Step 5 — Download the toolkit
+## Step 4 — Download the toolkit
 
 In your Ubuntu terminal:
 
 ```bash
 mkdir -p ~/projects
 cd ~/projects
-git clone git@github.com:kimosabie/vast-se-toolkit.git
+git clone https://github.com/kimosabie/vast-se-toolkit.git
 cd vast-se-toolkit
 ```
 
-> If you see *"Repository not found"* — the GitHub invite wasn't accepted yet. Go back to the [main guide](../INSTALL.md).
-
 ---
 
-## Step 6 — Run setup
+## Step 5 — Run setup
 
 Make sure the Docker whale icon is visible in your taskbar, then in Ubuntu run:
 
@@ -145,7 +92,7 @@ When you see `=== Setup complete! ===` you're done.
 
 ---
 
-## Step 7 — Open the app
+## Step 6 — Open the app
 
 Open your browser and go to:
 
@@ -169,7 +116,7 @@ Or use the Desktop launcher (see below).
 
 ---
 
-## Step 8 — Set up the Desktop launcher and pin to taskbar *(optional but recommended)*
+## Step 7 — Set up the Desktop launcher and pin to taskbar *(optional but recommended)*
 
 This lets you start the toolkit with a single click — no terminal needed.
 
@@ -203,7 +150,7 @@ The icon will appear in your taskbar. Click it anytime to start the toolkit and 
 
 ---
 
-## Step 9 — Enable Google Drive backup *(optional but recommended)*
+## Step 8 — Enable Google Drive backup *(optional but recommended)*
 
 The toolkit can automatically back up your project database to Google Drive so your work is safe across machines.
 
@@ -293,9 +240,9 @@ Your saved projects are never affected.
 **`docker: command not found` in Ubuntu**
 - Open Docker Desktop → Settings → Resources → WSL Integration → toggle on Ubuntu → Apply & Restart
 
-**`git clone` says "Permission denied (publickey)"**
-- Redo Step 4 — your SSH key may not be saved to GitHub correctly
-- Make sure you ran the SSH commands inside Ubuntu, not PowerShell
+**`git clone` fails**
+- Make sure you're running the command inside Ubuntu, not PowerShell
+- Check your internet connection and try again
 
 **WSL2 install failed or `wsl --install` did nothing**
 - Your Windows may need updating: Settings → Windows Update → Check for updates

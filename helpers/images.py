@@ -1,16 +1,22 @@
 import streamlit as st
 from config import DEVICE_IMAGE_MAP
 
-@st.cache_data(max_entries=30, show_spinner=False)
 def _get_device_img_b64(device_key):
     """Load device image as base64 for SVG embedding. Returns None if unavailable."""
-    import base64 as _b64mod, os as _os
+    import os as _os
     fname = DEVICE_IMAGE_MAP.get(device_key)
     if not fname:
         return None
     img_path = f"/app/images/{fname}"
     if not _os.path.exists(img_path):
         return None
+    mtime = _os.path.getmtime(img_path)
+    return _get_device_img_b64_cached(img_path, mtime)
+
+
+@st.cache_data(max_entries=30, show_spinner=False)
+def _get_device_img_b64_cached(img_path, mtime):
+    import base64 as _b64mod
     try:
         with open(img_path, "rb") as fh:
             return _b64mod.b64encode(fh.read()).decode()
